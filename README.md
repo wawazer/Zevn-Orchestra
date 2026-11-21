@@ -96,7 +96,7 @@ dist/         hasil installer siap dibagikan
 VERSION       versi rilis tunggal
 ```
 
-Rancangan teknis yang lebih rinci ada di [CONCEPT.md](CONCEPT.md).
+Rancangan teknis yang lebih rinci ada di [CONCEPT.md](CONCEPT.md). Peta kode, alur data, dan panduan menambah fitur ada di [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Lisensi
 
