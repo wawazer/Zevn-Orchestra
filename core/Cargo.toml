@@ -1,0 +1,51 @@
+[package]
+name = "zevn-core"
+version = "0.1.1"
+edition = "2024"
+description = "Zevn Shell shared core: vault, models, SSH, sync"
+license = "MIT"
+publish = false
+
+[lib]
+name = "zevn_core"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+uniffi = { version = "0.32", features = ["tokio"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+argon2 = "0.6"
+chacha20poly1305 = "0.11"
+getrandom = "0.3"
+uuid = { version = "1", features = ["v4"] }
+ssh-key = { version = "0.6.7", features = ["ed25519", "std"] }
+
+russh = "0.65"
+russh-sftp = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "fs", "io-util", "io-std", "sync", "time", "macros", "net"] }
+
+tokio-postgres = "0.7"
+postgres-native-tls = "0.5"
+native-tls = "0.2"
+mysql_async = "0.37"
+tiberius = { version = "0.13", default-features = false, features = ["tds73", "native-tls"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
+redis = { version = "1", features = ["tokio-comp", "tokio-native-tls-comp"] }
+mongodb = "3"
+reqwest = { version = "0.12", default-features = false, features = ["native-tls"] }
+futures-util = "0.3"
+
+[profile.release]
+lto = true
+opt-level = 3
+strip = true

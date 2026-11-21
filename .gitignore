@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Toolchain lokal (LLVM portable untuk build ARM64)
+.tools/
+
+# Log build lokal
+llvm-install*.log
+
+# Rust
+core/target/
+
+# Xcode (project dibuat dari project.yml lewat XcodeGen)
+apps/macos/build/
+apps/macos/build-release/
+apps/macos/*.xcodeproj/
+apps/macos/Frameworks/
+apps/macos/ZevnShell/Core/Generated/
+xcuserdata/
+DerivedData/
+
+
+# Windows (dibuat dari scripts/build-core-windows.ps1)
+apps/windows/ZevnShell/Core/Generated/
+apps/windows/ZevnShell/Native/
+apps/windows/**/bin/
+apps/windows/**/obj/
+apps/windows/publish/
+dist/
+
+.build-check/
+.screenshots/

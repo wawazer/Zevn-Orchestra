@@ -1,0 +1,17 @@
+﻿<Application
+    x:Class="ZevnShell.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+            <Color x:Key="SystemAccentColor">#08DB89</Color>
+            <Color x:Key="SystemAccentColorLight1">#39E2A1</Color>
+            <Color x:Key="SystemAccentColorLight2">#6BE9B8</Color>
+            <Color x:Key="SystemAccentColorDark1">#07BA74</Color>
+            <Color x:Key="SystemAccentColorDark2">#069960</Color>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
