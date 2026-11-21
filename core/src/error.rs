@@ -28,6 +28,8 @@ pub enum CoreError {
     Cancelled,
     #[error("Deploy: {msg}")]
     Deploy { msg: String },
+    #[error("Log: {msg}")]
+    Log { msg: String },
     #[error("Gagal membaca/menulis file: {msg}")]
     Io { msg: String },
 }

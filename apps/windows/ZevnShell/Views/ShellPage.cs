@@ -489,6 +489,7 @@ internal sealed class ShellPage : Grid
         {
             Section.Projects => new ProjectsPage(),
             Section.Deploy => new DeployPage(),
+            Section.LiveLogs => new LiveLogsPage(),
             Section.Hosts => new HostsPage(),
             Section.Keychain => new KeychainPage(),
             Section.Forwarding => new ForwardingPage(),

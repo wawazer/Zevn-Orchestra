@@ -136,6 +136,7 @@ internal sealed class ProjectsPage : PageBase
         RenderColors();
 
         var deployHost = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, Header = "Host tujuan deploy" };
+        var logHost = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, Header = "Host untuk log" };
         var hosts = Ui.Col(2);
         foreach (var h in M.Hosts)
         {
@@ -145,8 +146,8 @@ internal sealed class ProjectsPage : PageBase
                     Ui.Text(h.DisplayAddress(M.HideAddresses), 11, fg: Theme.Text2, mono: true)),
                 IsChecked = picked.Contains(h.Id)
             };
-            cb.Checked += (_, _) => { picked.Add(h.Id); RenderDeployHosts(); };
-            cb.Unchecked += (_, _) => { picked.Remove(h.Id); RenderDeployHosts(); };
+            cb.Checked += (_, _) => { picked.Add(h.Id); RenderHostChoices(); };
+            cb.Unchecked += (_, _) => { picked.Remove(h.Id); RenderHostChoices(); };
             hosts.Children.Add(cb);
         }
         UIElement hostList = M.Hosts.Length == 0
@@ -174,7 +175,19 @@ internal sealed class ProjectsPage : PageBase
             deployHost.SelectedItem = deployHost.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == current)
                 ?? deployHost.Items[0];
         }
-        RenderDeployHosts();
+        // Host untuk panel log: hanya host yang termasuk project.
+        void RenderLogHosts()
+        {
+            var current = (logHost.SelectedItem as ComboBoxItem)?.Tag as string ?? original.LogHostId ?? "";
+            logHost.Items.Clear();
+            logHost.Items.Add(new ComboBoxItem { Content = "Tidak ada", Tag = "" });
+            foreach (var h in M.Hosts.Where(h => picked.Contains(h.Id)))
+                logHost.Items.Add(new ComboBoxItem { Content = h.Title(), Tag = h.Id });
+            logHost.SelectedItem = logHost.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == current)
+                ?? logHost.Items[0];
+        }
+        void RenderHostChoices() { RenderDeployHosts(); RenderLogHosts(); }
+        RenderHostChoices();
 
         var deployPath = Ui.Field("/srv/aplikasi", original.DeployPath ?? "", mono: true);
         var deployBuild = Ui.Field("mis. npm ci --omit=dev", original.DeployBuild ?? "", mono: true);
@@ -187,13 +200,21 @@ internal sealed class ProjectsPage : PageBase
             Ui.Text("Deploy", 12, FontWeights.SemiBold), deployHelp,
             deployHost, deployPath, deployBuild, deployRestart, deployHealth);
 
+        var logCommand = Ui.Field("journalctl -u toko -f -n 200 --no-pager", original.LogCommand ?? "", mono: true);
+        var logHelp = Ui.Secondary(
+            "Perintah yang mengikuti log service; dipakai halaman Live Logs. Contoh: journalctl -u toko -f, docker logs -f toko, atau tail -n 200 -F /var/log/toko.log.",
+            11.5, true);
+        var logBox = Ui.Col(8,
+            Ui.Text("Live Log", 12, FontWeights.SemiBold), logHelp, logHost, logCommand);
+
         var content = Ui.Col(9,
             Ui.Text("Nama", 12, FontWeights.SemiBold), name,
             Ui.Text("Warna", 12, FontWeights.SemiBold), swatches,
             Ui.Text("Host", 12, FontWeights.SemiBold), hostList,
             Ui.Text("Catatan", 12, FontWeights.SemiBold), notes,
             autoRow,
-            Ui.Divider(), deployBox);
+            Ui.Divider(), deployBox,
+            Ui.Divider(), logBox);
         content.Width = 460;
         var scroll = new ScrollViewer
         {
@@ -215,7 +236,9 @@ internal sealed class ProjectsPage : PageBase
             DeployPath = Blank(deployPath.Text),
             DeployBuild = Blank(deployBuild.Text),
             DeployRestart = Blank(deployRestart.Text),
-            DeployHealth = Blank(deployHealth.Text)
+            DeployHealth = Blank(deployHealth.Text),
+            LogHostId = ((logHost.SelectedItem as ComboBoxItem)?.Tag as string) is { Length: > 0 } lh ? lh : null,
+            LogCommand = Blank(logCommand.Text)
         });
     }
 

@@ -138,6 +138,12 @@ pub struct Project {
     /// Perintah pemeriksaan kesehatan; kode keluar 0 berarti deploy dianggap berhasil.
     #[serde(default)]
     pub deploy_health: Option<String>,
+    /// Host yang dipakai panel log (harus salah satu host project).
+    #[serde(default)]
+    pub log_host_id: Option<String>,
+    /// Perintah yang dijalankan untuk mengikuti log, mis. `journalctl -u toko -f`.
+    #[serde(default)]
+    pub log_command: Option<String>,
     pub updated_at: i64,
     pub deleted: bool,
 }

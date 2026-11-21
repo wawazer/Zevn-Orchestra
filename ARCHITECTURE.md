@@ -32,6 +32,7 @@ core/                     pustaka Rust zevn-core (cdylib/staticlib)
   src/ssh.rs              koneksi russh, verifikasi known_hosts, SshTarget
   src/sftp.rs             SftpClient: list/upload/download/exec/upload_into
   src/deploy.rs           Deployer: rilis, symlink current, health check, rollback
+  src/logs.rs             LogStream: kanal SSH streaming untuk panel log
   src/db.rs               delapan mesin database (query, struktur, filter)
   src/keys.rs             generate/import kunci SSH
   src/proxy.rs            koneksi TCP lewat SOCKS5/HTTP CONNECT + stdio ProxyCommand
@@ -322,9 +323,10 @@ Field baru otomatis ikut sync karena seluruh `VaultData` diserialisasi.
 
 ## 11. Batasan yang diketahui
 
-- **Panel log per project** (tail `journalctl -u <svc> -f` / `docker logs -f`) belum ada.
-  Rancangan yang cocok: kanal exec streaming di `SftpClient`, satu `LogModel` per project,
-  output di buffer melingkar agar UI tidak tumbuh tanpa batas.
+- **Panel log per project** sudah ada di halaman Live Logs (`LogStream` + `LogModel`):
+  perintah disimpan di project (`log_host_id`, `log_command`), keluaran dibatasi 2000 baris,
+  dan sesi dihentikan saat project berganti atau vault dikunci. Belum ada penanda warna
+  per tingkat log, pencarian di dalam log, atau ekspor.
 - **Tunnel per project** baru sebatas auto-start; belum ada preset atau status detail
   (port, lokal/remote, proses mati karena apa).
 - **Deploy** belum menyimpan riwayat lokal, belum mendukung rsync/delta, dan belum
@@ -342,6 +344,7 @@ Field baru otomatis ikut sync karena seluruh `VaultData` diserialisasi.
 | Cara data disimpan & digabung | `core/src/vault.rs`, `core/src/crypto.rs` |
 | Perilaku koneksi SSH & known_hosts | `core/src/ssh.rs` |
 | Perintah SFTP/exec/upload | `core/src/sftp.rs` |
+| Streaming log service | `core/src/logs.rs`, `Core/LogModel.cs` |
 | Alur deploy & rollback | `core/src/deploy.rs` |
 | State aplikasi & navigasi | `apps/windows/ZevnShell/Core/AppModel.cs` |
 | Path data & terjemahan error | `apps/windows/ZevnShell/Core/Support.cs` |

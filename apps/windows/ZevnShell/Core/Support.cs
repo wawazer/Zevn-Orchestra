@@ -113,6 +113,7 @@ internal static class Errors
         CoreException.Db d => $"Database: {d.msg}",
         CoreException.Cancelled => "Transfer dibatalkan",
         CoreException.Deploy d => $"Deploy: {d.msg}",
+        CoreException.Log l => $"Log: {l.msg}",
         CoreException.Io io => $"Gagal membaca/menulis file: {io.msg}",
         _ => e.Message
     };
@@ -285,7 +286,7 @@ internal static class HostExt
 
     public static Snippet BlankSnippet() => new("", "", "", 0, false);
 
-    public static Project BlankProject() => new("", "", Theme.HostColors[0], [], null, false, null, null, null, null, null, 0, false);
+    public static Project BlankProject() => new("", "", Theme.HostColors[0], [], null, false, null, null, null, null, null, null, null, 0, false);
 
     public static PortForward BlankForward(string hostId) => new("", "", hostId, ForwardKind.Local, "127.0.0.1", 8080, "localhost", 80, 0, false);
 

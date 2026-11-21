@@ -556,6 +556,7 @@ mod tests {
             host_ids: vec![h.id.clone()], notes: Some("staging + prod".into()),
             auto_tunnels: true, deploy_path: Some("/srv/toko".into()), deploy_host_id: Some(h.id.clone()), deploy_build: None,
             deploy_restart: Some("sudo systemctl restart toko".into()), deploy_health: None,
+            log_host_id: Some(h.id.clone()), log_command: Some("journalctl -u toko -f".into()),
             updated_at: 0, deleted: false,
         }).unwrap();
         assert!(!p.id.is_empty());
