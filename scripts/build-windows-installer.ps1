@@ -1,6 +1,7 @@
 # Build Zevn Shell (Release) dan buat installer .exe per arsitektur.
 # Syarat: zevn_core.dll + binding C# sudah dibuat (scripts\build-core-windows.ps1), .NET 9 SDK, Inno Setup 6.3+.
-#   powershell -ExecutionPolicy Bypass -File scripts\build-windows-installer.ps1 -Version 0.1.0 [-Arch ARM64,x64]
+#   powershell -ExecutionPolicy Bypass -File scripts\build-windows-installer.ps1 [-Version x.y.z] [-Arch ARM64,x64]
+# Versi default dibaca dari VERSION di akar repo; ubah lewat scripts\set-version.ps1.
 # Hasil: dist\Zevn-Shell-<versi>-Windows-<arch>-Setup.exe
 param(
     [string]$Version = "0.1.1",
@@ -11,6 +12,19 @@ $root = Split-Path -Parent $PSScriptRoot
 $win = Join-Path $root "apps\windows"
 $proj = Join-Path $win "ZevnShell\ZevnShell.csproj"
 $dist = Join-Path $root "dist"
+$versionFile = Join-Path $root "VERSION"
+if (-not $Version) { $Version = (Get-Content $versionFile -Raw).Trim() }
+$Version = $Version.Trim().TrimStart("v")
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Versi '$Version' tidak berbentuk x.y.z" }
+
+# Aplikasi, installer, dan isi zevn_core.dll harus memakai versi yang sama.
+# Kalau tidak, halaman Tentang akan melaporkan dua versi berbeda seperti sebelumnya.
+$pinned = (Get-Content $versionFile -Raw).Trim()
+$coreVersion = (Select-String -Path (Join-Path $root "core\Cargo.toml") -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+if ($pinned -ne $Version -or $coreVersion -ne $Version) {
+    throw "Versi tidak seragam: VERSION=$pinned, core/Cargo.toml=$coreVersion, -Version=$Version. Jalankan scripts\set-version.ps1 -Version $Version lalu bangun ulang zevn_core.dll."
+}
+
 New-Item -ItemType Directory -Force $dist | Out-Null
 
 $iscc = @((Get-Command iscc.exe -ErrorAction SilentlyContinue).Source) +

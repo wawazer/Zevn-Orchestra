@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Satu sumber versi untuk semua proyek .NET: berkas VERSION di akar repo. -->
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</Version>
+  </PropertyGroup>
+</Project>
