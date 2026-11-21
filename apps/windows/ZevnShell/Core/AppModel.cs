@@ -11,32 +11,35 @@ namespace ZevnShell;
 
 internal enum Phase { Welcome, CreatePassword, Restore, Locked, Main }
 
-internal enum Section { Hosts, Keychain, Forwarding, Sftp, Database, Snippets, KnownHosts, Logs, About, Account }
+internal enum Section { Projects, Deploy, Hosts, Keychain, Forwarding, Sftp, Database, Snippets, KnownHosts, Logs, About, Account }
 
 internal enum SyncKind { Off, Idle, Syncing, Synced, Failed, NeedsLogin }
 
 internal static class SectionInfo
 {
-    public static readonly Section[] Main = [Section.Hosts, Section.Keychain, Section.Forwarding, Section.Sftp, Section.Database, Section.Snippets, Section.KnownHosts, Section.Logs];
+    public static readonly Section[] Main = [Section.Projects, Section.Deploy, Section.Hosts, Section.Keychain, Section.Forwarding, Section.Sftp, Section.Database, Section.Snippets, Section.KnownHosts, Section.Logs];
     public static readonly Section[] Community = [Section.About];
 
     public static string Title(this Section s) => s switch
     {
-        Section.Hosts => "Hosts", Section.Keychain => "Keychain", Section.Forwarding => "Port Forwarding", Section.Sftp => "SFTP",
+        Section.Projects => "Projects", Section.Deploy => "Deploy", Section.Hosts => "Hosts",
+        Section.Keychain => "Keychain", Section.Forwarding => "Port Forwarding", Section.Sftp => "SFTP",
         Section.Database => "Database", Section.Snippets => "Snippets", Section.KnownHosts => "Known Hosts", Section.Logs => "Logs",
         Section.About => "Tentang", _ => "Akun",
     };
 
     public static string Glyph(this Section s) => s switch
     {
-        Section.Hosts => G.Server, Section.Keychain => G.Key, Section.Forwarding => G.Forward, Section.Sftp => G.Folder,
+        Section.Projects => G.Apps, Section.Deploy => G.Upload, Section.Hosts => G.Server,
+        Section.Keychain => G.Key, Section.Forwarding => G.Forward, Section.Sftp => G.Folder,
         Section.Database => G.Database, Section.Snippets => G.Code, Section.KnownHosts => G.Fingerprint, Section.Logs => G.History,
         Section.About => G.Info, _ => G.Person,
     };
 
     public static string Tint(this Section s) => s switch
     {
-        Section.Hosts => "#3B82F6", Section.Keychain => "#F59E0B", Section.Forwarding => "#10B981", Section.Sftp => "#06B6D4",
+        Section.Projects => "#08DB89", Section.Deploy => "#06B6D4", Section.Hosts => "#3B82F6",
+        Section.Keychain => "#F59E0B", Section.Forwarding => "#10B981", Section.Sftp => "#0EA5E9",
         Section.Database => "#F97316", Section.Snippets => "#8B5CF6", Section.KnownHosts => "#EC4899", Section.Logs => "#64748B",
         Section.About => "#6366F1", _ => "#14B8A6",
     };
@@ -53,7 +56,37 @@ internal sealed class AppModel
     public PortForward[] Forwards { get; private set; } = [];
     public SessionLog[] Logs { get; private set; } = [];
     public DbConnection[] Databases { get; private set; } = [];
+    public Project[] Projects { get; private set; } = [];
     public DbWorkspace? DbWorkspace { get; private set; }
+
+    /// <summary>Project aktif (disimpan lokal di pengaturan, bukan di vault).</summary>
+    public string? ActiveProjectId => Settings.Str(Settings.ActiveProject);
+    public Project? ActiveProject => Projects.FirstOrDefault(p => p.Id == ActiveProjectId);
+
+    /// <summary>Host yang terlihat: semua host, atau hanya milik project aktif.</summary>
+    public Host[] ProjectHosts
+    {
+        get
+        {
+            if (ActiveProject is not { } p) return Hosts;
+            var ids = p.HostIds.ToHashSet();
+            return Hosts.Where(h => ids.Contains(h.Id)).ToArray();
+        }
+    }
+
+    /// <summary>Aturan tunnel milik host di project aktif.</summary>
+    public PortForward[] ProjectForwards
+    {
+        get
+        {
+            if (ActiveProject is not { } p) return Forwards;
+            var ids = p.HostIds.ToHashSet();
+            return Forwards.Where(f => ids.Contains(f.HostId)).ToArray();
+        }
+    }
+
+    /// <summary>Tunnel yang dinyalakan otomatis oleh project aktif (dihentikan saat project berganti).</summary>
+    private readonly HashSet<string> _autoTunnels = [];
 
     public string? AccountEmail { get; private set; }
     public string? PendingAccountEmail { get; set; }
@@ -109,6 +142,7 @@ internal sealed class AppModel
 
     public TunnelManager Tunnels { get; } = new();
     public SftpModel Sftp { get; }
+    public DeployModel Deploy { get; }
 
     public bool IsDark { get; private set; } = true;
     public string Appearance { get; private set; } = Settings.Str(Settings.Appearance) ?? "dark";
@@ -127,6 +161,7 @@ internal sealed class AppModel
         _dq = DispatcherQueue.GetForCurrentThread();
         Phase = ZevnCoreMethods.VaultExists(Config.VaultPath) ? Phase.Locked : Phase.Welcome;
         Sftp = new SftpModel(this);
+        Deploy = new DeployModel(this);
         Tunnels.Changed += () => Raise("tunnels");
         IsDark = ComputeDark();
         _ui.ColorValuesChanged += (_, _) => _dq.TryEnqueue(() =>
@@ -344,6 +379,7 @@ internal sealed class AppModel
 
     public void Lock()
     {
+        Deploy.Close();
         _ = Sftp.Disconnect();
         foreach (var s in Sessions) s.Terminate();
         Tunnels.StopAll();
@@ -351,7 +387,8 @@ internal sealed class AppModel
         Sessions.Clear();
         ActiveSessionId = null;
         _vault = null;
-        Hosts = []; Keys = []; Snippets = []; Forwards = []; Logs = []; Databases = [];
+        Hosts = []; Keys = []; Snippets = []; Forwards = []; Logs = []; Databases = []; Projects = [];
+        _autoTunnels.Clear();
         DbWorkspace = null;
         EditingHost = null;
         Selection.Clear();
@@ -366,6 +403,7 @@ internal sealed class AppModel
         AccountEmail = v.AccountEmail();
         Sync = AccountEmail == null ? SyncKind.Off : SyncKind.Idle;
         SetPhase(Phase.Main);
+        StartAutoTunnels();
         if (AccountEmail != null) SyncNow();
         _ = CheckForUpdates(false);
     }
@@ -395,6 +433,64 @@ internal sealed class AppModel
         Forwards = _vault.Forwards();
         Logs = _vault.Logs();
         Databases = _vault.Databases();
+        Projects = _vault.Projects();
+        // Project yang dihapus di perangkat lain tidak boleh tertinggal sebagai konteks aktif.
+        if (ActiveProjectId is { } id && Projects.All(p => p.Id != id)) Settings.Set(Settings.ActiveProject, null);
+    }
+
+    // MARK: Project
+
+    public Project? ProjectById(string? id) => id == null ? null : Projects.FirstOrDefault(p => p.Id == id);
+
+    /// <summary>Aktifkan project (null = semua host). Tunnel yang dinyalakan otomatis ikut dihentikan.</summary>
+    public void SetActiveProject(string? id, bool announce = true)
+    {
+        if (id != null && Projects.All(p => p.Id != id)) id = null;
+        StopAutoTunnels();
+        Settings.Set(Settings.ActiveProject, id);
+        StartAutoTunnels();
+        Raise("data");
+        Raise("tunnels");
+        if (announce) Flash(id == null ? "Project dinonaktifkan — semua host ditampilkan" : $"Project \u201c{ActiveProject?.Name}\u201d aktif");
+    }
+
+    public Project? Save(Project p)
+    {
+        if (_vault == null) return null;
+        try
+        {
+            var saved = _vault.UpsertProject(p);
+            var wasActive = saved.Id == ActiveProjectId;
+            DataChanged();
+            if (wasActive) { StopAutoTunnels(); StartAutoTunnels(); Raise("tunnels"); }
+            return saved;
+        }
+        catch (Exception e) { Flash(Errors.Text(e)); return null; }
+    }
+
+    public void Delete(Project p)
+    {
+        if (p.Id == ActiveProjectId) SetActiveProject(null, false);
+        try { _vault?.DeleteProject(p.Id); } catch { }
+        DataChanged();
+    }
+
+    /// <summary>Nyalakan aturan tunnel milik project aktif bila project memintanya.</summary>
+    private void StartAutoTunnels()
+    {
+        if (ActiveProject is not { AutoTunnels: true } p) return;
+        foreach (var f in Forwards.Where(f => p.HostIds.Contains(f.HostId)))
+        {
+            if (Tunnels.IsRunning(f.Id) || HostById(f.HostId) is not { } h) continue;
+            Tunnels.Start(f, h, KeyById(h.KeyId), HostById(h.JumpHostId));
+            _autoTunnels.Add(f.Id);
+        }
+    }
+
+    private void StopAutoTunnels()
+    {
+        foreach (var id in _autoTunnels.ToList()) Tunnels.Stop(id);
+        _autoTunnels.Clear();
     }
 
     /// <summary>Setelah setiap perubahan data: muat ulang tampilan & jadwalkan sync.</summary>
@@ -602,7 +698,7 @@ internal sealed class AppModel
 
     public void ToggleTunnel(PortForward f)
     {
-        if (Tunnels.IsRunning(f.Id)) Tunnels.Stop(f.Id);
+        if (Tunnels.IsRunning(f.Id)) { _autoTunnels.Remove(f.Id); Tunnels.Stop(f.Id); }
         else if (HostById(f.HostId) is { } h) Tunnels.Start(f, h, KeyById(h.KeyId), HostById(h.JumpHostId));
         else Flash("Host untuk aturan ini sudah tidak ada");
     }

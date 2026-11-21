@@ -90,6 +90,7 @@ internal static class Settings
     public const string ProfilePicture = "profile.picture";
     public const string DbShowTree = "db.showTree";
     public const string LocalShell = "terminal.localShell";   // shell bawaan tab terminal lokal        // daftar database & tabel di kiri
+    public const string ActiveProject = "project.active";     // id project yang sedang dipakai
 }
 
 /// <summary>Pesan error dari zevn-core dalam bahasa Indonesia (binding C# tidak membawa pesannya).</summary>
@@ -111,6 +112,7 @@ internal static class Errors
         CoreException.HostKeyChanged => "Kunci server berubah! Bisa jadi server diganti atau ada serangan man-in-the-middle. Hapus host ini di Known Hosts jika memang server berganti.",
         CoreException.Db d => $"Database: {d.msg}",
         CoreException.Cancelled => "Transfer dibatalkan",
+        CoreException.Deploy d => $"Deploy: {d.msg}",
         CoreException.Io io => $"Gagal membaca/menulis file: {io.msg}",
         _ => e.Message
     };
@@ -282,6 +284,8 @@ internal static class HostExt
     public static string DisplayAddress(this Host h, bool hidden) => hidden ? $"{h.Username}@••••••••" : h.Address();
 
     public static Snippet BlankSnippet() => new("", "", "", 0, false);
+
+    public static Project BlankProject() => new("", "", Theme.HostColors[0], [], null, false, null, null, null, null, null, 0, false);
 
     public static PortForward BlankForward(string hostId) => new("", "", hostId, ForwardKind.Local, "127.0.0.1", 8080, "localhost", 80, 0, false);
 

@@ -225,8 +225,8 @@ internal sealed class ShellPage : Grid
 
     private int Badge(Section s) => s switch
     {
-        Section.Hosts => M.Hosts.Length, Section.Keychain => M.Keys.Length, Section.Snippets => M.Snippets.Length,
-        Section.Forwarding => M.Forwards.Length, Section.Database => M.Databases.Length, _ => 0,
+        Section.Projects => M.Projects.Length, Section.Hosts => M.Hosts.Length, Section.Keychain => M.Keys.Length,
+        Section.Snippets => M.Snippets.Length, Section.Forwarding => M.Forwards.Length, Section.Database => M.Databases.Length, _ => 0,
     };
 
     private UIElement SidebarRow(Section s)
@@ -487,6 +487,8 @@ internal sealed class ShellPage : Grid
         _shownHome = true;
         FrameworkElement page = M.Section switch
         {
+            Section.Projects => new ProjectsPage(),
+            Section.Deploy => new DeployPage(),
             Section.Hosts => new HostsPage(),
             Section.Keychain => new KeychainPage(),
             Section.Forwarding => new ForwardingPage(),

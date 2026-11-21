@@ -61,15 +61,19 @@ internal sealed class SftpPage : PageBase
     {
         var header = Ui.Header("SFTP", "Kelola file di server: upload, download, ganti nama, atur izin.");
         var col = Ui.Col(22, header);
-        if (M.Hosts.Length == 0)
-            col.Children.Add(Ui.EmptyState(G.Folder, "Belum ada host", "Tambahkan host dulu di menu Hosts, lalu buka SFTP-nya di sini."));
+        var hosts = M.ProjectHosts;
+        if (hosts.Length == 0)
+            col.Children.Add(Ui.EmptyState(G.Folder, M.ActiveProject is { } ap ? $"“{ap.Name}” belum punya host" : "Belum ada host",
+                M.ActiveProject != null ? "Tambahkan host ke project ini, atau kembali ke semua host."
+                : "Tambahkan host dulu di menu Hosts, lalu buka SFTP-nya di sini.",
+                M.ActiveProject != null ? Ui.Secondary("Semua host", G.Close, () => M.SetActiveProject(null)) : null));
         else
         {
-            col.Children.Add(Ui.Caps("Pilih server"));
+            col.Children.Add(Ui.Caps(M.ActiveProject is { } p2 ? $"Pilih server · project {p2.Name}" : "Pilih server"));
             var rep = new ItemsRepeater
             {
                 Layout = new UniformGridLayout { MinItemWidth = 240, MinItemHeight = 72, MinColumnSpacing = 12, MinRowSpacing = 12, ItemsStretch = UniformGridLayoutItemsStretch.Fill },
-                ItemsSource = M.Hosts.Select((h, i) =>
+                ItemsSource = hosts.Select((h, i) =>
                 {
                     var row = Ui.Columns("Auto,*,Auto", 12, Ui.TintIcon(G.Folder, h.Color, 38, 15, 10),
                         Ui.Col(2, Ui.Text(h.Title(), 13.5, FontWeights.SemiBold), Ui.Text(h.DisplayAddress(M.HideAddresses), 11, fg: Theme.Text2, mono: true)),

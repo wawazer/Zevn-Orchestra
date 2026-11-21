@@ -104,6 +104,44 @@ pub struct SshKey {
     pub deleted: bool,
 }
 
+/// Satu project: kumpulan server untuk satu aplikasi/pekerjaan.
+///
+/// Project tidak menyimpan salinan host; ia hanya merujuk id host yang sudah ada,
+/// supaya perubahan host tetap satu sumber dan ikut tersinkron.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    /// Warna kartu, hex `#RRGGBB`.
+    pub color: String,
+    /// Host yang termasuk project ini.
+    #[serde(default)]
+    pub host_ids: Vec<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    /// Nyalakan semua aturan port forwarding project ini saat project diaktifkan.
+    #[serde(default)]
+    pub auto_tunnels: bool,
+
+    /// Folder dasar rilis di server, mis. `/srv/toko` (berisi `releases/` dan `current`).
+    #[serde(default)]
+    pub deploy_path: Option<String>,
+    /// Host yang dipakai untuk deploy (harus salah satu host project).
+    #[serde(default)]
+    pub deploy_host_id: Option<String>,
+    /// Perintah dijalankan di dalam folder rilis sebelum `current` dipindah.
+    #[serde(default)]
+    pub deploy_build: Option<String>,
+    /// Perintah setelah `current` dipindah, mis. `sudo systemctl restart toko`.
+    #[serde(default)]
+    pub deploy_restart: Option<String>,
+    /// Perintah pemeriksaan kesehatan; kode keluar 0 berarti deploy dianggap berhasil.
+    #[serde(default)]
+    pub deploy_health: Option<String>,
+    pub updated_at: i64,
+    pub deleted: bool,
+}
+
 /// Perintah tersimpan yang bisa dijalankan ke satu atau banyak host.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Snippet {
@@ -206,6 +244,8 @@ pub struct VaultData {
     #[serde(default)]
     pub databases: Vec<DbConnection>,
     #[serde(default)]
+    pub projects: Vec<Project>,
+    #[serde(default)]
     pub account_email: Option<String>,
 }
 
@@ -243,4 +283,4 @@ macro_rules! impl_record {
         }
     )*};
 }
-impl_record!(Host, SshKey, Snippet, PortForward, SessionLog, DbConnection);
+impl_record!(Host, SshKey, Snippet, PortForward, SessionLog, DbConnection, Project);

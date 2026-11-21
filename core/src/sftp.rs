@@ -26,6 +26,15 @@ pub struct RemoteEntry {
     pub permissions: u32,
 }
 
+/// Hasil menjalankan satu perintah non-interaktif di server.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ExecResult {
+    /// Kode keluar perintah (-1 jika server tidak melaporkannya).
+    pub status: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
 /// Laporan progress transfer — diimplementasikan di Swift / C#.
 #[uniffi::export(with_foreign)]
 pub trait TransferProgress: Send + Sync {
@@ -225,6 +234,86 @@ impl SftpClient {
         Ok(())
     }
 
+    /// Jalankan perintah non-interaktif lewat koneksi yang sama (dipakai deploy).
+    /// `timeout_secs` membatasi perintah yang menggantung.
+    pub async fn exec(&self, command: String, timeout_secs: u32) -> Result<ExecResult, CoreError> {
+        let mut channel = {
+            let guard = self.handle.lock().await;
+            let h = guard.as_ref().ok_or_else(|| CoreError::Deploy { msg: "koneksi sudah ditutup".into() })?;
+            h.channel_open_session().await.map_err(err)?
+        };
+        channel.exec(true, command).await.map_err(err)?;
+
+        let collect = async {
+            let mut out = Vec::new();
+            let mut errs = Vec::new();
+            let mut status = -1i32;
+            while let Some(msg) = channel.wait().await {
+                match msg {
+                    russh::ChannelMsg::Data { data } => out.extend_from_slice(&data),
+                    russh::ChannelMsg::ExtendedData { data, ext } if ext == 1 => errs.extend_from_slice(&data),
+                    russh::ChannelMsg::ExitStatus { exit_status } => status = exit_status as i32,
+                    _ => {}
+                }
+            }
+            (out, errs, status)
+        };
+        let limit = std::time::Duration::from_secs(u64::from(timeout_secs.max(1)));
+        match tokio::time::timeout(limit, collect).await {
+            Err(_) => Err(CoreError::Deploy { msg: format!("perintah melewati batas waktu {timeout_secs} detik") }),
+            Ok((out, errs, status)) => Ok(ExecResult {
+                status,
+                stdout: String::from_utf8_lossy(&out).into_owned(),
+                stderr: String::from_utf8_lossy(&errs).into_owned(),
+            }),
+        }
+    }
+
+    /// Unggah isi folder lokal ke `remote_dir` (tanpa membungkusnya dalam satu folder),
+    /// melewati nama yang ada di `excludes` (mis. `.git`, `node_modules`).
+    pub async fn upload_into(&self, local_dir: String, remote_dir: String, excludes: Vec<String>, progress: Arc<dyn TransferProgress>) -> Result<(), CoreError> {
+        let root = PathBuf::from(&local_dir);
+        if !tokio::fs::metadata(&root).await.map(|m| m.is_dir()).unwrap_or(false) {
+            return Err(CoreError::Io { msg: format!("bukan folder: {local_dir}") });
+        }
+        let mut files: Vec<(PathBuf, String, u64)> = vec![];
+        let mut dirs: Vec<String> = vec![];
+        walk_into(&root, &remote_dir, &excludes, &mut files, &mut dirs)?;
+        for d in &dirs {
+            let _ = self.sftp.create_dir(d.clone()).await;
+        }
+
+        let total: u64 = files.iter().map(|f| f.2).sum();
+        let mut done = 0u64;
+        progress.on_progress(0, total, String::new());
+        for (lp, rp, _) in files {
+            let mut src = tokio::fs::File::open(&lp).await?;
+            let mut dst = self
+                .sftp
+                .open_with_flags(rp.clone(), OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE)
+                .await
+                .map_err(err)?;
+            let mut buf = vec![0u8; CHUNK];
+            let fname = lp.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            loop {
+                if progress.is_cancelled() {
+                    drop(dst);
+                    let _ = self.sftp.remove_file(rp.clone()).await;
+                    return Err(CoreError::Cancelled);
+                }
+                let n = src.read(&mut buf).await?;
+                if n == 0 { break; }
+                dst.write_all(&buf[..n]).await?;
+                done += n as u64;
+                progress.on_progress(done, total, fname.clone());
+            }
+            dst.flush().await?;
+            dst.shutdown().await?;
+        }
+        progress.on_progress(total, total, String::new());
+        Ok(())
+    }
+
     /// Tutup sesi SFTP dan koneksi SSH.
     pub async fn close(&self) {
         let _ = self.sftp.close().await;
@@ -246,6 +335,24 @@ impl SftpClient {
         }
         Ok(())
     }
+}
+
+/// Telusuri isi folder lokal: nama yang dikecualikan (dan .DS_Store) dilewati.
+fn walk_into(dir: &Path, remote: &str, excludes: &[String], files: &mut Vec<(PathBuf, String, u64)>, dirs: &mut Vec<String>) -> Result<(), CoreError> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name == ".DS_Store" || excludes.iter().any(|e| e == &name) { continue; }
+        let rp = join(remote, &name);
+        let ft = entry.file_type()?;
+        if ft.is_dir() {
+            dirs.push(rp.clone());
+            walk_into(&entry.path(), &rp, excludes, files, dirs)?;
+        } else if ft.is_file() {
+            files.push((entry.path(), rp, entry.metadata()?.len()));
+        }
+    }
+    Ok(())
 }
 
 fn walk_local(dir: &Path, remote: &str, files: &mut Vec<(PathBuf, String, u64)>, dirs: &mut Vec<String>) -> Result<(), CoreError> {

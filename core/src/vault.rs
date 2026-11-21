@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::crypto::{self, Key, SALT_LEN};
 use crate::keys;
-use crate::model::{DbConnection, Host, PortForward, Record, SessionLog, Snippet, SshKey, SyncOutcome, VaultData, now_ms};
+use crate::model::{DbConnection, Host, PortForward, Project, Record, SessionLog, Snippet, SshKey, SyncOutcome, VaultData, now_ms};
 use crate::CoreError;
 
 /// Vault terbuka (sudah di-unlock). Semua perubahan langsung ditulis ke disk terenkripsi.
@@ -170,6 +170,7 @@ impl Vault {
             merge_records(&mut data.forwards, remote.forwards),
             merge_records(&mut data.logs, remote.logs),
             merge_records(&mut data.databases, remote.databases),
+            merge_records(&mut data.projects, remote.projects),
         ];
         let outcome = SyncOutcome {
             local_changed: results.iter().any(|r| r.0),
@@ -283,6 +284,23 @@ impl Vault {
             Ok(())
         })
     }
+
+    // ---- Project ----
+
+    /// Semua project aktif, urut berdasarkan nama.
+    pub fn projects(&self) -> Vec<Project> {
+        let mut v = active(&self.data.lock().unwrap().projects);
+        v.sort_by_key(|p| p.name.to_lowercase());
+        v
+    }
+
+    pub fn upsert_project(&self, project: Project) -> Result<Project, CoreError> {
+        self.mutate(|d| upsert(&mut d.projects, project))
+    }
+
+    pub fn delete_project(&self, id: String) -> Result<(), CoreError> {
+        self.mutate(|d| remove(&mut d.projects, &id))
+    }
 }
 
 fn active<T: Record>(list: &[T]) -> Vec<T>
@@ -294,7 +312,7 @@ where
 
 pub trait HasDeleted { fn is_deleted(&self) -> bool; }
 macro_rules! has_deleted { ($($t:ty),*) => {$( impl HasDeleted for $t { fn is_deleted(&self) -> bool { self.deleted } } )*}; }
-has_deleted!(Snippet, PortForward, SessionLog, DbConnection);
+has_deleted!(Snippet, PortForward, SessionLog, DbConnection, Project);
 
 /// Tambah (id kosong) atau ganti record.
 fn upsert<T: Record>(list: &mut Vec<T>, mut item: T) -> Result<T, CoreError> {
@@ -526,6 +544,49 @@ mod tests {
         v2.clear_logs().unwrap();
         assert!(v2.snippets().is_empty() && v2.logs().is_empty());
         fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn projects_crud_and_sync() {
+        let path = tmp_path("projects");
+        let v = Vault::create(path.clone(), "rahasia123".into()).unwrap();
+        let h = v.upsert_host(sample()).unwrap();
+        let p = v.upsert_project(Project {
+            id: String::new(), name: "Toko".into(), color: "#7AA2F7".into(),
+            host_ids: vec![h.id.clone()], notes: Some("staging + prod".into()),
+            auto_tunnels: true, deploy_path: Some("/srv/toko".into()), deploy_host_id: Some(h.id.clone()), deploy_build: None,
+            deploy_restart: Some("sudo systemctl restart toko".into()), deploy_health: None,
+            updated_at: 0, deleted: false,
+        }).unwrap();
+        assert!(!p.id.is_empty());
+
+        // Bertahan setelah vault dibuka ulang, dan perubahan ikut tersimpan.
+        let v2 = Vault::unlock(path.clone(), "rahasia123".into()).unwrap();
+        assert_eq!(v2.projects(), vec![p.clone()]);
+        let mut renamed = p.clone();
+        renamed.name = "Toko (baru)".into();
+        v2.upsert_project(renamed).unwrap();
+        assert_eq!(Vault::unlock(path.clone(), "rahasia123".into()).unwrap().projects()[0].name, "Toko (baru)");
+
+        // Merge antar perangkat: project yang lebih baru menang.
+        let b_path = tmp_path("projects-b");
+        fs::write(&b_path, v.encrypted_blob().unwrap()).unwrap();
+        let b = Vault::unlock(b_path.clone(), "rahasia123".into()).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(3));
+        let mut remote = b.projects()[0].clone();
+        remote.name = "Toko B".into();
+        remote.notes = Some("dari perangkat lain".into());
+        b.upsert_project(remote).unwrap();
+        let out = v.merge_remote(b.encrypted_blob().unwrap()).unwrap();
+        assert!(out.local_changed);
+        assert_eq!(v.projects()[0].name, "Toko B");
+        assert_eq!(v.projects()[0].notes.as_deref(), Some("dari perangkat lain"));
+
+        // Hapus = tombstone, tidak muncul lagi.
+        v.delete_project(p.id.clone()).unwrap();
+        assert!(v.projects().is_empty());
+        fs::remove_file(path).ok();
+        fs::remove_file(b_path).ok();
     }
 
     #[test]

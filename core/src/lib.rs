@@ -7,6 +7,7 @@
 
 mod crypto;
 mod db;
+mod deploy;
 mod error;
 mod keys;
 mod model;
@@ -18,10 +19,11 @@ mod vault;
 
 pub use error::CoreError;
 pub use db::{DbFilter, DbSession, DbTable, QueryResult};
-pub use model::{AuthMethod, DbConnection, DbEngine, EnvVar, ForwardKind, Host, HostProxy, PortForward, ProxyKind, SessionLog, Snippet, SshKey, SyncOutcome};
+pub use deploy::{DeployConfig, DeployOutcome, DeployProgress, Deployer, Release};
+pub use model::{AuthMethod, DbConnection, DbEngine, EnvVar, ForwardKind, Host, HostProxy, PortForward, Project, ProxyKind, SessionLog, Snippet, SshKey, SyncOutcome};
 pub use proxy::proxy_stdio;
 pub use server_info::{DiskInfo, ServerInfo, ServerMonitor, ServerSample};
-pub use sftp::{RemoteEntry, SftpClient, TransferProgress};
+pub use sftp::{ExecResult, RemoteEntry, SftpClient, TransferProgress};
 pub use ssh::SshTarget;
 pub use vault::{Vault, vault_exists};
 

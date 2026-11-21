@@ -26,6 +26,8 @@ pub enum CoreError {
     Db { msg: String },
     #[error("Transfer dibatalkan")]
     Cancelled,
+    #[error("Deploy: {msg}")]
+    Deploy { msg: String },
     #[error("Gagal membaca/menulis file: {msg}")]
     Io { msg: String },
 }

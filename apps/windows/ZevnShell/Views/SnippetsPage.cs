@@ -80,7 +80,8 @@ internal sealed class SnippetsPage : PageBase
     /// <summary>Pilih host, lalu buka satu tab per host yang langsung menjalankan perintah.</summary>
     private async Task RunDialog(Snippet s)
     {
-        if (M.Hosts.Length == 0) { M.Flash("Tambahkan host dulu"); return; }
+        var hosts = M.ProjectHosts;
+        if (hosts.Length == 0) { M.Flash(M.ActiveProject is { } ap ? $"Project “{ap.Name}” belum punya host" : "Tambahkan host dulu"); return; }
         var picked = new HashSet<string>();
         var list = Ui.Col(6);
         Button? runButton = null;
@@ -88,7 +89,7 @@ internal sealed class SnippetsPage : PageBase
         void RenderList()
         {
             list.Children.Clear();
-            foreach (var h in M.Hosts)
+            foreach (var h in hosts)
             {
                 var on = picked.Contains(h.Id);
                 var row = Ui.Columns("Auto,Auto,*,Auto", 10,
@@ -109,7 +110,7 @@ internal sealed class SnippetsPage : PageBase
         }
         var all = Ui.Plain(Ui.Text("Pilih semua / batal", 12.5, fg: Theme.AccentBrush), () =>
         {
-            if (picked.Count == M.Hosts.Length) picked.Clear(); else foreach (var h in M.Hosts) picked.Add(h.Id);
+            if (picked.Count == hosts.Length) picked.Clear(); else foreach (var h in hosts) picked.Add(h.Id);
             RenderList();
         });
         all.HorizontalAlignment = HorizontalAlignment.Left;
@@ -121,6 +122,6 @@ internal sealed class SnippetsPage : PageBase
         RenderList();
         _ = runButton;
         if (await d.ShowAsync() == ContentDialogResult.Primary && picked.Count > 0)
-            M.Connect(M.Hosts.Where(h => picked.Contains(h.Id)).Select(h => h.Id).ToList(), s.Command);
+            M.Connect(hosts.Where(h => picked.Contains(h.Id)).Select(h => h.Id).ToList(), s.Command);
     }
 }

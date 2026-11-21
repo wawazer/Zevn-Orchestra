@@ -52,10 +52,13 @@ internal sealed class HostsPage : PageBase
         eye.Height = 30;
         eye.Width = 30;
         var search = Ui.Search("Cari host, IP, tag…", _query, q => { _query = q; Render(); }, M.EditingHost == null ? 230 : 150);
+        var project = M.ActiveProject is { } ap
+            ? Ui.Secondary(ap.Name, G.Close, () => M.SetActiveProject(null))
+            : null;
         var add = Ui.Primary("Host Baru", G.Add, () => M.Edit(HostExt.Blank()));
         add.Height = 32;
         ToolTipService.SetToolTip(add, "Host baru (Ctrl+N)");
-        var right = Ui.Row(8, layout, eye, search, add);
+        var right = Ui.Row(8, layout, eye, project, search, add);
         right.VerticalAlignment = VerticalAlignment.Bottom;
         return Ui.Columns("*,Auto", 12, left, right).With(g => g.Name = "header");
     }
@@ -71,9 +74,10 @@ internal sealed class HostsPage : PageBase
 
     private Host[] Filtered()
     {
+        var pool = M.ProjectHosts;
         var q = _query.Trim().ToLowerInvariant();
-        if (q.Length == 0) return M.Hosts;
-        return M.Hosts.Where(h => new[] { h.Label, h.Hostname, h.Username, h.Group ?? "" }.Concat(h.Tags).Any(s => s.ToLowerInvariant().Contains(q))).ToArray();
+        if (q.Length == 0) return pool;
+        return pool.Where(h => new[] { h.Label, h.Hostname, h.Username, h.Group ?? "" }.Concat(h.Tags).Any(s => s.ToLowerInvariant().Contains(q))).ToArray();
     }
 
     protected override void OnModelChanged(string what)
@@ -86,7 +90,9 @@ internal sealed class HostsPage : PageBase
         if (_subtitle != null)
         {
             var online = M.OnlineCount;
-            _subtitle.Text = $"{M.Hosts.Length} server" + (online > 0 ? $"  ·  ● {online} terhubung" : "");
+            _subtitle.Text = $"{M.ProjectHosts.Length} server"
+                + (M.ActiveProject is { } ap ? $"  ·  project {ap.Name}" : "")
+                + (online > 0 ? $"  ·  ● {online} terhubung" : "");
         }
         _groups.Children.Clear();
         var hosts = Filtered();
@@ -94,6 +100,13 @@ internal sealed class HostsPage : PageBase
         {
             _groups.Children.Add(Ui.EmptyState(G.Server, "Belum ada host", "Tambahkan server pertamamu, lalu connect dengan satu klik.",
                 Ui.Primary("Tambah host", G.Add, () => M.Edit(HostExt.Blank()))));
+        }
+        else if (M.ActiveProject is { } project && M.ProjectHosts.Length == 0)
+        {
+            _groups.Children.Add(Ui.EmptyState(G.Apps, $"“{project.Name}” belum punya host",
+                "Tambahkan host ke project ini, atau kembali ke semua host.",
+                Ui.Row(8, Ui.Secondary("Semua host", G.Close, () => M.SetActiveProject(null)),
+                    Ui.Primary("Host baru", G.Add, () => M.Edit(HostExt.Blank())))));
         }
         else if (hosts.Length == 0)
         {
@@ -285,7 +298,7 @@ internal sealed class HostsPage : PageBase
         var row = Ui.Row(10, count, Ui.Text("host dipilih", 13),
             Ui.Secondary("Pilih semua", null, () => M.SetSelection(visible.Select(h => h.Id))),
             Ui.Secondary("Batal", null, () => M.SetSelection([])),
-            Ui.Primary("Connect semua", G.Bolt, () => M.Connect(M.Hosts.Where(h => M.Selection.Contains(h.Id)).Select(h => h.Id).ToList())));
+            Ui.Primary("Connect semua", G.Bolt, () => M.Connect(M.ProjectHosts.Where(h => M.Selection.Contains(h.Id)).Select(h => h.Id).ToList())));
         _selectionBar.Child = row;
         _selectionBar.Padding = new Thickness(14, 10, 10, 10);
         _selectionBar.CornerRadius = new CornerRadius(10);

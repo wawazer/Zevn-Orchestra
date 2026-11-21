@@ -15,8 +15,8 @@ internal sealed class ForwardingPage : PageBase
 
     public ForwardingPage() : base("data", "tunnels")
     {
-        var add = Ui.Primary("Aturan Baru", G.Add, () => _ = Editor(HostExt.BlankForward(M.Hosts.FirstOrDefault()?.Id ?? "")));
-        add.IsEnabled = M.Hosts.Length > 0;
+        var add = Ui.Primary("Aturan Baru", G.Add, () => _ = Editor(HostExt.BlankForward(M.ProjectHosts.FirstOrDefault()?.Id ?? "")));
+        add.IsEnabled = M.ProjectHosts.Length > 0;
         var header = Ui.Header("Port Forwarding", "Teruskan port lewat SSH — buka database, dashboard, atau proxy SOCKS dengan aman.", add);
         Children.Add(Ui.Scroll(Ui.Col(22, header, _list)));
         Render();
@@ -25,16 +25,21 @@ internal sealed class ForwardingPage : PageBase
     protected override void Render()
     {
         _list.Children.Clear();
-        if (M.Forwards.Length == 0)
+        var forwards = M.ProjectForwards;
+        if (forwards.Length == 0)
         {
             _list.Children.Add(Ui.EmptyState(G.Forward, "Belum ada aturan",
-                M.Hosts.Length == 0 ? "Tambahkan host dulu, lalu buat aturan port forwarding." : "Contoh: teruskan 127.0.0.1:5433 ke database PostgreSQL di server.",
-                M.Hosts.Length == 0 ? null : Ui.Primary("Aturan Baru", G.Add, () => _ = Editor(HostExt.BlankForward(M.Hosts[0].Id)))));
+                M.Hosts.Length == 0 ? "Tambahkan host dulu, lalu buat aturan port forwarding."
+                : M.ActiveProject is { } ap ? $"Project “{ap.Name}” belum punya aturan tunnel. Buat satu, atau kembali ke semua host."
+                : "Contoh: teruskan 127.0.0.1:5433 ke database PostgreSQL di server.",
+                Ui.Row(8,
+                    M.Hosts.Length == 0 ? null : Ui.Primary("Aturan Baru", G.Add, () => _ = Editor(HostExt.BlankForward(M.ProjectHosts.FirstOrDefault()?.Id ?? M.Hosts[0].Id))),
+                    M.ActiveProject != null ? Ui.Secondary("Semua host", G.Close, () => M.SetActiveProject(null)) : null)));
             return;
         }
-        for (int i = 0; i < M.Forwards.Length; i++)
+        for (int i = 0; i < forwards.Length; i++)
         {
-            var row = Row(M.Forwards[i]);
+            var row = Row(forwards[i]);
             _list.Children.Add(row);
             Ui.StaggerIn(row, i);
         }
