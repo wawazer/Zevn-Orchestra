@@ -11,18 +11,18 @@ namespace ZevnShell;
 
 internal enum Phase { Welcome, CreatePassword, Restore, Locked, Main }
 
-internal enum Section { Projects, Deploy, LiveLogs, Hosts, Keychain, Forwarding, Sftp, Database, Snippets, KnownHosts, Logs, About, Account }
+internal enum Section { Projects, Overview, Deploy, LiveLogs, Hosts, Keychain, Forwarding, Sftp, Database, Snippets, KnownHosts, Logs, About, Account }
 
 internal enum SyncKind { Off, Idle, Syncing, Synced, Failed, NeedsLogin }
 
 internal static class SectionInfo
 {
-    public static readonly Section[] Main = [Section.Projects, Section.Deploy, Section.LiveLogs, Section.Hosts, Section.Keychain, Section.Forwarding, Section.Sftp, Section.Database, Section.Snippets, Section.KnownHosts, Section.Logs];
+    public static readonly Section[] Main = [Section.Projects, Section.Overview, Section.Deploy, Section.LiveLogs, Section.Hosts, Section.Keychain, Section.Forwarding, Section.Sftp, Section.Database, Section.Snippets, Section.KnownHosts, Section.Logs];
     public static readonly Section[] Community = [Section.About];
 
     public static string Title(this Section s) => s switch
     {
-        Section.Projects => "Projects", Section.Deploy => "Deploy", Section.LiveLogs => "Live Logs", Section.Hosts => "Hosts",
+        Section.Projects => "Projects", Section.Overview => "Overview", Section.Deploy => "Deploy", Section.LiveLogs => "Live Logs", Section.Hosts => "Hosts",
         Section.Keychain => "Keychain", Section.Forwarding => "Port Forwarding", Section.Sftp => "SFTP",
         Section.Database => "Database", Section.Snippets => "Snippets", Section.KnownHosts => "Known Hosts", Section.Logs => "Logs",
         Section.About => "Tentang", _ => "Akun",
@@ -30,7 +30,7 @@ internal static class SectionInfo
 
     public static string Glyph(this Section s) => s switch
     {
-        Section.Projects => G.Apps, Section.Deploy => G.Upload, Section.LiveLogs => G.Terminal, Section.Hosts => G.Server,
+        Section.Projects => G.Apps, Section.Overview => G.Grid, Section.Deploy => G.Upload, Section.LiveLogs => G.Terminal, Section.Hosts => G.Server,
         Section.Keychain => G.Key, Section.Forwarding => G.Forward, Section.Sftp => G.Folder,
         Section.Database => G.Database, Section.Snippets => G.Code, Section.KnownHosts => G.Fingerprint, Section.Logs => G.History,
         Section.About => G.Info, _ => G.Person,
@@ -38,7 +38,7 @@ internal static class SectionInfo
 
     public static string Tint(this Section s) => s switch
     {
-        Section.Projects => "#08DB89", Section.Deploy => "#06B6D4", Section.LiveLogs => "#38BDF8", Section.Hosts => "#3B82F6",
+        Section.Projects => "#08DB89", Section.Overview => "#22C55E", Section.Deploy => "#06B6D4", Section.LiveLogs => "#38BDF8", Section.Hosts => "#3B82F6",
         Section.Keychain => "#F59E0B", Section.Forwarding => "#10B981", Section.Sftp => "#0EA5E9",
         Section.Database => "#F97316", Section.Snippets => "#8B5CF6", Section.KnownHosts => "#EC4899", Section.Logs => "#64748B",
         Section.About => "#6366F1", _ => "#14B8A6",

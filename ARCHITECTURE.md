@@ -354,5 +354,6 @@ Field baru otomatis ikut sync karena seluruh `VaultData` diserialisasi.
 | State aplikasi & navigasi | `apps/windows/ZevnShell/Core/AppModel.cs` |
 | Path data & terjemahan error | `apps/windows/ZevnShell/Core/Support.cs` |
 | Routing halaman | `apps/windows/ZevnShell/Views/ShellPage.cs` |
+| Ringkasan project (server, tunnel, deploy, log) | `apps/windows/ZevnShell/Views/OverviewPage.cs` |
 | Terminal & tunnel | `apps/windows/ZevnShell/Terminal/` |
 | Versi & installer | `VERSION`, `scripts/` |
