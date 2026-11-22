@@ -105,17 +105,14 @@ internal sealed class LiveLogsPage : PageBase
             _command.Text = p.LogCommand ?? "";
         }
         UpdateStatus();
-        if (_log.Text != L.Text)
+        // Placeholder ikut dibandingkan supaya tidak berkedip antara kosong dan teks.
+        var text = L.Text.Length == 0 ? "Menunggu keluaran…" : L.Text;
+        if (_log.Text != text)
         {
-            _log.Text = L.Text;
+            _log.Text = text;
             _log.Foreground = L.Text.Length == 0 ? Theme.Text3 : Theme.Text;
-            if (_follow.IsOn && L.State == LogModel.Status.Running)
+            if (_follow.IsOn && L.Text.Length > 0)
                 _logScroll.ChangeView(null, double.MaxValue, null, true);
-        }
-        else if (L.Text.Length == 0)
-        {
-            _log.Text = "Menunggu keluaran…";
-            _log.Foreground = Theme.Text3;
         }
     }
 

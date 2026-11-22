@@ -274,6 +274,9 @@ Perintah yang biasa dipakai saat mengembangkan (dari akar repo):
 # tes inti (NASM tidak terpasang di mesin ini)
 cd core; $env:AWS_LC_SYS_PREBUILT_NASM=1; cargo test --lib
 
+# tes integrasi Live Logs (server SSH russh di loopback, tanpa sshd/Docker)
+cd core; cargo test --test logs_local
+
 # build core release + salin DLL
 powershell -ExecutionPolicy Bypass -File scripts\build-core-windows.ps1
 
@@ -325,8 +328,10 @@ Field baru otomatis ikut sync karena seluruh `VaultData` diserialisasi.
 
 - **Panel log per project** sudah ada di halaman Live Logs (`LogStream` + `LogModel`):
   perintah disimpan di project (`log_host_id`, `log_command`), keluaran dibatasi 2000 baris,
-  dan sesi dihentikan saat project berganti atau vault dikunci. Belum ada penanda warna
-  per tingkat log, pencarian di dalam log, atau ekspor.
+  dan sesi dihentikan saat project berganti atau vault dikunci. Alur SSH-nya diuji otomatis
+  terhadap server russh di loopback (`core/tests/logs_local.rs`: baris terpotong, stderr,
+  exit status, `stop`, dan koneksi dipakai ulang), tetapi belum diuji ke sshd/OpenSSH nyata.
+  Belum ada penanda warna per tingkat log, pencarian di dalam log, atau ekspor.
 - **Tunnel per project** baru sebatas auto-start; belum ada preset atau status detail
   (port, lokal/remote, proses mati karena apa).
 - **Deploy** belum menyimpan riwayat lokal, belum mendukung rsync/delta, dan belum

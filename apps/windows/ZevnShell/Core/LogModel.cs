@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using uniffi.zevn_core;
@@ -74,11 +75,17 @@ internal sealed class LogModel
             }
             _stream = stream;
             Clear();
+            // Baris dari sesi lama bisa masih datang setelah stop/ganti project/kunci
+            // vault; hanya terima yang berasal dari sesi (run) yang sedang aktif.
             _bridge = new LogBridge(
-                Append,
+                line =>
+                {
+                    if (run == Volatile.Read(ref _runId)) Append(line);
+                },
                 status => _dq.TryEnqueue(() =>
                 {
-                    if (run != _runId) return;
+                    // Kegagalan kanal sudah dilaporkan lewat catch; jangan timpa "Gagal".
+                    if (run != Volatile.Read(ref _runId) || Error != null) return;
                     ExitCode = status;
                     State = Status.Ended;
                     Changed?.Invoke();
