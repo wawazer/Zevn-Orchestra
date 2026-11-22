@@ -30,7 +30,7 @@ core/                     pustaka Rust zevn-core (cdylib/staticlib)
   src/vault.rs            CRUD vault, merge sync, persist
   src/crypto.rs           format file vault (Argon2id + XChaCha20-Poly1305)
   src/ssh.rs              koneksi russh, verifikasi known_hosts, SshTarget
-  src/sftp.rs             SftpClient: list/upload/download/exec/upload_into
+  src/sftp.rs             SftpClient: list/upload/download/exec/upload_into/read_text/write_text
   src/deploy.rs           Deployer: rilis, symlink current, health check, rollback
   src/logs.rs             LogStream: kanal SSH streaming untuk panel log
   src/db.rs               delapan mesin database (query, struktur, filter)
@@ -135,6 +135,7 @@ Aturan penting saat menambah koleksi baru: tambahkan juga di `merge_remote` dan 
 |---|---|
 | `project.active` | id project yang sedang aktif (null = semua host) |
 | `deploy.local.<projectId>` | folder lokal sumber deploy di PC ini |
+| `env.path.<projectId>` | path file .env project di server (bawaan `<deployPath>/.env`) |
 | `appearance`, `hideAddresses`, `hostLayout`, `terminal.autocomplete` | preferensi tampilan |
 | `db.showTree`, `terminal.localShell`, `profile.name`, `profile.picture` | preferensi lain |
 
@@ -241,7 +242,21 @@ detik yang sama, nama diberi akhiran `-2`, `-3`, dst.
 - Eksklusi default: `.git`, `.gitignore`, `.gitattributes`, `node_modules`, `.venv`,
   `venv`, `__pycache__`, `.idea`, `.vscode`, `.DS_Store`.
 
-### 8.4 Yang belum diverifikasi
+### 8.4 Editor .env (halaman Env)
+
+- `SftpClient.read_text` membaca file teks (maks 1 MB, `None` bila belum ada) dan
+  `write_text` menulis ulang isinya. Bila `backup` aktif dan file sudah ada, isi lama
+  disalin dulu ke `<path>.bak` dengan izin file yang sama, baru file utama ditimpa.
+- `Core/EnvModel.cs` mem-parse baris (`#komentar`, baris kosong, `export KEY=value`) dan
+  menyusun ulang isi file saat menyimpan; urutan baris dipertahankan.
+- Nilai dengan nama kunci sensitif (SECRET, TOKEN, PASSWORD, API_KEY, PRIVATE, dsb.)
+  ditampilkan sebagai `PasswordBox` (tersamar, bisa diintip per field) atau tersembunyi
+  sampai sakelar "Tampilkan nilai" dinyalakan.
+- Path file disimpan per perangkat (`env.path.<projectId>`), bukan di vault; host yang
+  dipakai adalah host deploy project, atau host pertama bila belum diatur.
+- `EnvModel.Close()` dipanggil dari `AppModel.Lock()`.
+
+### 8.5 Yang belum diverifikasi
 
 Deploy sudah lulus unit test (penamaan rilis, tabrakan nama, kutipan shell) dan kompilasi,
 tetapi **belum diuji end-to-end ke server SSH nyata**. Saat menguji pertama kali, periksa:
@@ -355,5 +370,6 @@ Field baru otomatis ikut sync karena seluruh `VaultData` diserialisasi.
 | Path data & terjemahan error | `apps/windows/ZevnShell/Core/Support.cs` |
 | Routing halaman | `apps/windows/ZevnShell/Views/ShellPage.cs` |
 | Ringkasan project (server, tunnel, deploy, log) | `apps/windows/ZevnShell/Views/OverviewPage.cs` |
+| Editor .env project | `apps/windows/ZevnShell/Views/EnvPage.cs`, `Core/EnvModel.cs` |
 | Terminal & tunnel | `apps/windows/ZevnShell/Terminal/` |
 | Versi & installer | `VERSION`, `scripts/` |

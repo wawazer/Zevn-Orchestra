@@ -4,7 +4,7 @@
 # Versi default dibaca dari VERSION di akar repo; ubah lewat scripts\set-version.ps1.
 # Hasil: dist\Zevn-Shell-<versi>-Windows-<arch>-Setup.exe
 param(
-    [string]$Version = "0.1.1",
+    [string]$Version = "0.1.2",
     [ValidateSet("ARM64", "x64")] [string[]]$Arch = @("ARM64", "x64")
 )
 $ErrorActionPreference = "Continue"

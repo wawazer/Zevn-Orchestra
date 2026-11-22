@@ -12,6 +12,8 @@ use crate::ssh::{self, Client, SshTarget};
 use crate::CoreError;
 
 const CHUNK: usize = 256 * 1024;
+/// Batas file teks yang boleh dibuka di editor (mis. .env).
+const MAX_TEXT: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct RemoteEntry {
@@ -127,6 +129,68 @@ impl SftpClient {
         } else {
             self.sftp.remove_file(path).await.map_err(err)
         }
+    }
+
+    /// Baca isi file teks (maks 1 MB). `None` bila file belum ada di server.
+    pub async fn read_text(&self, path: String) -> Result<Option<String>, CoreError> {
+        let meta = match self.sftp.metadata(path.clone()).await {
+            Ok(m) => m,
+            Err(_) => return Ok(None),
+        };
+        if meta.is_dir() {
+            return Err(CoreError::Io { msg: format!("{path} adalah folder, bukan file") });
+        }
+        if meta.size.unwrap_or(0) > MAX_TEXT {
+            return Err(CoreError::Io { msg: format!("file lebih besar dari 1 MB: {path}") });
+        }
+        let mut file = self.sftp.open_with_flags(path, OpenFlags::READ).await.map_err(err)?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).await.map_err(err)?;
+        Ok(Some(String::from_utf8_lossy(&buf).into_owned()))
+    }
+
+    /// Tulis file teks. Bila `backup` dan file sudah ada, isi lama disalin dulu ke `<path>.bak`.
+    /// Mengembalikan path backup (None bila belum ada file lama).
+    pub async fn write_text(&self, path: String, content: String, backup: bool) -> Result<Option<String>, CoreError> {
+        let old = match self.sftp.metadata(path.clone()).await {
+            Ok(m) if m.is_dir() => {
+                return Err(CoreError::Io { msg: format!("{path} adalah folder, bukan file") });
+            }
+            Ok(m) => Some(m),
+            Err(_) => None,
+        };
+
+        let mut backup_path = None;
+        if backup {
+            if let Some(meta) = old {
+                let bak = format!("{path}.bak");
+                let mut src = self.sftp.open_with_flags(path.clone(), OpenFlags::READ).await.map_err(err)?;
+                let mut data = Vec::new();
+                src.read_to_end(&mut data).await.map_err(err)?;
+                let mut dst = self
+                    .sftp
+                    .open_with_flags(bak.clone(), OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE)
+                    .await
+                    .map_err(err)?;
+                dst.write_all(&data).await.map_err(err)?;
+                dst.flush().await.map_err(err)?;
+                dst.shutdown().await.map_err(err)?;
+                if let Some(mode) = meta.permissions {
+                    let _ = self.chmod(bak.clone(), mode & 0o7777).await;
+                }
+                backup_path = Some(bak);
+            }
+        }
+
+        let mut file = self
+            .sftp
+            .open_with_flags(path, OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE)
+            .await
+            .map_err(err)?;
+        file.write_all(content.as_bytes()).await.map_err(err)?;
+        file.flush().await.map_err(err)?;
+        file.shutdown().await.map_err(err)?;
+        Ok(backup_path)
     }
 
     /// Download file atau folder `remote` ke folder lokal `local_dir`.

@@ -1,6 +1,6 @@
 [package]
 name = "zevn-core"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Zevn Shell shared core: vault, models, SSH, sync"
 license = "MIT"
