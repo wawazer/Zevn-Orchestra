@@ -38,6 +38,7 @@ internal sealed class DeployPage : PageBase
         var host = M.HostById(project.DeployHostId);
         var basePath = (project.DeployPath ?? "").Trim();
         var local = D.LocalDir(project);
+        _ = D.EnsureGitAsync(project);
         var ready = basePath.Length > 0 && host != null;
 
         var refresh = Ui.Secondary("Muat rilis", G.Refresh, () =>
@@ -46,8 +47,9 @@ internal sealed class DeployPage : PageBase
         });
         refresh.IsEnabled = ready && !D.Busy;
 
-        var deploy = Ui.Primary("Deploy sekarang", G.Upload, () =>
+        var deploy = Ui.Primary("Deploy sekarang", G.Upload, async () =>
         {
+            if (!await GitStatus.ConfirmDirtyAsync(D.Git)) return;
             if (host != null && M.SshTarget(host.Id) is { } t) _ = D.DeployAsync(project, t);
         });
         deploy.IsEnabled = ready && !D.Busy && !string.IsNullOrWhiteSpace(local);
@@ -90,10 +92,34 @@ internal sealed class DeployPage : PageBase
                 ? Ui.Text(basePath, 12, fg: Theme.Text2, mono: true)
                 : Ui.Text("Belum diatur", 12, fg: Theme.Brush(Theme.Orange)),
             SectionLabel("Folder lokal"), localRow,
+            SectionLabel("Git"), GitRow(project),
             Ui.Divider(),
             SectionLabel("Perintah"), commands,
             edit);
         return Card(grid);
+    }
+
+    /// <summary>Branch, commit terakhir, dan kondisi working tree folder lokal.</summary>
+    private UIElement GitRow(Project project)
+    {
+        if (D.Git is not { } git)
+            return Ui.Text(string.IsNullOrWhiteSpace(D.LocalDir(project))
+                ? "Folder lokal belum dipilih"
+                : "Membaca status Git…", 11.5, fg: Theme.Text3);
+        if (git.Error is { } error)
+            return Ui.Text(error, 11.5, fg: Theme.Text3);
+
+        var dirty = git.Changed > 0;
+        var line = Ui.Columns("*,Auto", 10,
+            Ui.Col(2,
+                Ui.Row(8,
+                    Ui.Text(git.Head, 11.5, fg: Theme.Text2, mono: true),
+                    Ui.Badge(dirty ? "KOTOR" : "BERSIH", dirty ? Theme.Orange : Theme.Green)),
+                git.Subject is { Length: > 0 } subject
+                    ? Ui.Text(subject, 11, fg: Theme.Text3)
+                    : null),
+            dirty ? Ui.Text($"{git.Changed} berkas", 11, fg: Theme.Brush(Theme.Orange)) : null);
+        return line;
     }
 
     private static UIElement CommandRow(string label, string? value)

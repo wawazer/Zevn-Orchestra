@@ -41,6 +41,11 @@ internal sealed class DeployModel
     public Release[] Releases { get; private set; } = [];
     public List<string> Log { get; } = [];
 
+    /// <summary>Status Git folder lokal yang terakhir dibaca (null = belum dibaca).</summary>
+    public GitInfo? Git { get; private set; }
+    private string? _gitDir;
+    private bool _gitBusy;
+
     public DeployModel(AppModel model)
     {
         _model = model;
@@ -56,7 +61,35 @@ internal sealed class DeployModel
     public void SetLocalDir(Project p, string dir)
     {
         Settings.Set(LocalDirKey(p.Id), dir);
+        _gitDir = null;
+        Git = null;
         Post(() => { });
+    }
+
+    /// <summary>
+    /// Baca status Git folder lokal sekali per folder; panggil dari Render supaya
+    /// halaman Deploy/Overview selalu menampilkan branch dan kondisi working tree.
+    /// </summary>
+    public async Task EnsureGitAsync(Project p, bool force = false)
+    {
+        var dir = LocalDir(p);
+        if (string.IsNullOrWhiteSpace(dir) || !System.IO.Directory.Exists(dir))
+        {
+            if (_gitDir != null) Post(() => { Git = null; _gitDir = null; });
+            return;
+        }
+        if (_gitBusy || (!force && _gitDir == dir)) return;
+        _gitBusy = true;
+        _gitDir = dir;
+        try
+        {
+            var info = await GitStatus.ReadAsync(dir);
+            Post(() => { if (_gitDir == dir) Git = info; _gitBusy = false; });
+        }
+        catch (Exception e)
+        {
+            Post(() => { Git = new GitInfo { Dir = dir, Error = Errors.Text(e) }; _gitBusy = false; });
+        }
     }
 
     public void Cancel() => _bridge?.Cancel();
@@ -189,6 +222,7 @@ internal sealed class DeployModel
         _connectionKey = null;
         if (d != null) _ = d.Close();
     }
+
 
     private async Task<Deployer> ConnectAsync(Project p, SshTarget target)
     {

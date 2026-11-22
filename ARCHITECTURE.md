@@ -45,6 +45,7 @@ apps/windows/ZevnShell/   aplikasi WinUI 3 (.NET 9)
   Core/AppModel.cs        state aplikasi + operasi vault + navigasi
   Core/Support.cs         Config (path), Settings (JSON lokal), Errors (teks ID)
   Core/DeployModel.cs     jembatan Deployer ↔ UI
+  Core/GitStatus.cs       status Git tipis folder lokal deploy (git.exe)
   Core/SftpModel.cs       jembatan SftpClient ↔ UI
   Core/DbWorkspace.cs     state penjelajah database
   Core/ServerStats.cs     polling ServerMonitor
@@ -241,6 +242,13 @@ detik yang sama, nama diberi akhiran `-2`, `-3`, dst.
   (`Deployer.releases`), dan log hanya hidup selama sesi halaman.
 - Eksklusi default: `.git`, `.gitignore`, `.gitattributes`, `node_modules`, `.venv`,
   `venv`, `__pycache__`, `.idea`, `.vscode`, `.DS_Store`.
+- `Core/GitStatus.cs` menjalankan `git.exe` di folder lokal (`status --porcelain=v1
+  --branch` dan `log -1`) untuk branch, hash pendek, subjek commit, dan jumlah berkas
+  berubah. `DeployModel.EnsureGitAsync` menyimpannya sekali per folder dan dipanggil dari
+  `Render` halaman Deploy/Overview; folder non-repo atau Git yang tidak ada hanya
+  menghasilkan keterangan, tidak memblokir deploy. Bila working tree kotor, tombol deploy
+  meminta konfirmasi (`GitStatus.ConfirmDirtyAsync`) karena yang diunggah adalah isi
+  folder apa adanya.
 
 ### 8.4 Editor .env (halaman Env)
 

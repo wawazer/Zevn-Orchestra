@@ -95,6 +95,7 @@ internal sealed class OverviewPage : PageBase
         var host = M.HostById(p.DeployHostId);
         var basePath = (p.DeployPath ?? "").Trim();
         var local = D.LocalDir(p);
+        _ = D.EnsureGitAsync(p);
         var ready = host != null && basePath.Length > 0;
         var canDeploy = ready && !D.Busy && !string.IsNullOrWhiteSpace(local);
 
@@ -121,8 +122,9 @@ internal sealed class OverviewPage : PageBase
                 Ui.Text(text, 12, fg: Theme.Text2, wrap: true));
         }
 
-        var deploy = Ui.Primary(D.Busy ? "Berjalan…" : "Deploy sekarang", G.Upload, () =>
+        var deploy = Ui.Primary(D.Busy ? "Berjalan…" : "Deploy sekarang", G.Upload, async () =>
         {
+            if (!await GitStatus.ConfirmDirtyAsync(D.Git)) return;
             if (host != null && M.SshTarget(host.Id) is { } t) _ = D.DeployAsync(p, t);
         });
         deploy.IsEnabled = canDeploy;
@@ -130,10 +132,17 @@ internal sealed class OverviewPage : PageBase
         var content = Ui.Col(10,
             CardHead("Deploy", host?.Title() ?? "host tujuan belum dipilih",
                 Ui.Secondary("Halaman Deploy", G.Next, () => M.Navigate(Section.Deploy)), deploy),
-            status, Ui.Divider(),
+            status,
+            D.Git is { IsRepo: true, Changed: > 0 } dirty
+                ? Ui.Row(8, Ui.Icon(G.Warning, 13, Theme.Brush(Theme.Orange)),
+                    Ui.Text($"{dirty.Changed} berkas belum di-commit di folder lokal — deploy mengunggah apa adanya.",
+                        11.5, fg: Theme.Brush(Theme.Orange), wrap: true))
+                : null,
+            Ui.Divider(),
             Meta("Server", host?.Title()),
             Meta("Folder rilis", basePath, mono: true),
             Meta("Folder lokal", local, mono: true),
+            Meta("Git", GitText()),
             Meta("Restart", (p.DeployRestart ?? "").Trim(), mono: true));
         return Card(content);
     }
@@ -251,6 +260,14 @@ internal sealed class OverviewPage : PageBase
         var host = M.HostById(p.LogHostId) ?? M.HostById(p.DeployHostId);
         if (host != null) return host.Title();
         return string.IsNullOrWhiteSpace(p.LogCommand) ? "belum diatur" : "host belum dipilih";
+    }
+
+    /// <summary>Branch + commit terakhir folder lokal, atau alasan Git tidak terbaca.</summary>
+    private string? GitText()
+    {
+        if (D.Git is not { } git) return null;
+        if (git.Error is { } error) return error;
+        return git.Subject is { Length: > 0 } subject ? $"{git.Head} · {subject}" : git.Head;
     }
 
     private static Border Tile(string label, string glyph, string hex, string value, string detail) => Card(Ui.Col(6,
