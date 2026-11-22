@@ -5,7 +5,7 @@
 ; Dipasang per user (tanpa admin) di %LOCALAPPDATA%\Programs\Zevn Shell.
 
 #ifndef AppVersion
-  #define AppVersion "0.1.1"
+  #define AppVersion "0.1.2"
 #endif
 #ifndef Arch
   #define Arch "x64"

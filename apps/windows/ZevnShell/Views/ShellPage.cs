@@ -45,7 +45,7 @@ internal sealed class ShellPage : Grid
     private readonly AppModel M = App.Model;
     private readonly Border _sidebar = new();
     private readonly Border _mainPanel = new();
-    private readonly StackPanel _navList = new();
+    private StackPanel _navList = new();
     private string _navQuery = "";
     private TextBox? _navBox;
     private readonly Border _tabStrip = new() { Height = 44 };
@@ -158,9 +158,9 @@ internal sealed class ShellPage : Grid
         var search = NavSearch();
         search.Margin = new Thickness(9, 0, 9, 6);
 
-        _navList.Spacing = 0;
-        // Daftar menu dipakai ulang; lepaskan dulu dari ScrollViewer lama agar tidak E_INVALIDARG saat dirender ulang
-        if (_navList.Parent is ScrollViewer previous) previous.Content = null;
+        // Daftar menu selalu dibuat baru: elemen XAML tidak boleh dipakai dua induk,
+        // dan sidebar dirender ulang setiap kali navigasi/data berubah.
+        _navList = new StackPanel { Spacing = 0 };
         var scroll = new ScrollViewer
         {
             Content = _navList, Padding = new Thickness(7, 0, 7, 8),
@@ -491,6 +491,7 @@ internal sealed class ShellPage : Grid
             Section.Overview => new OverviewPage(),
             Section.Deploy => new DeployPage(),
             Section.LiveLogs => new LiveLogsPage(),
+            Section.Env => new EnvPage(),
             Section.Hosts => new HostsPage(),
             Section.Keychain => new KeychainPage(),
             Section.Forwarding => new ForwardingPage(),
