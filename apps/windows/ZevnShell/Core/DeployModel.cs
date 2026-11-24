@@ -45,6 +45,10 @@ internal sealed class DeployModel
     public GitInfo? Git { get; private set; }
     private string? _gitDir;
     private bool _gitBusy;
+    private DateTime _gitAt;
+
+    /// <summary>Umur hasil baca Git sebelum dibaca ulang, supaya badge tidak basi setelah commit.</summary>
+    private static readonly TimeSpan GitFresh = TimeSpan.FromSeconds(10);
 
     public DeployModel(AppModel model)
     {
@@ -78,13 +82,18 @@ internal sealed class DeployModel
             if (_gitDir != null) Post(() => { Git = null; _gitDir = null; });
             return;
         }
-        if (_gitBusy || (!force && _gitDir == dir)) return;
+        var fresh = _gitDir == dir && Git != null && DateTime.UtcNow - _gitAt < GitFresh;
+        if (_gitBusy || Busy || (!force && fresh)) return;
         _gitBusy = true;
         _gitDir = dir;
         try
         {
             var info = await GitStatus.ReadAsync(dir);
-            Post(() => { if (_gitDir == dir) Git = info; _gitBusy = false; });
+            Post(() =>
+            {
+                if (_gitDir == dir) { Git = info; _gitAt = DateTime.UtcNow; }
+                _gitBusy = false;
+            });
         }
         catch (Exception e)
         {

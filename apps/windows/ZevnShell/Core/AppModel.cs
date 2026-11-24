@@ -252,6 +252,18 @@ internal sealed class AppModel
             v.UpsertHost(old == null ? h : h with { Id = old.Id });
         }
         Open(v);
+        // ZEVN_DEMO_GIT=<folder> : project contoh dengan folder lokal, untuk tes status Git
+        if (Environment.GetEnvironmentVariable("ZEVN_DEMO_GIT") is { Length: > 0 } gitDir)
+        {
+            var host = Hosts.FirstOrDefault();
+            var p = Projects.FirstOrDefault(x => x.Name == "demo-deploy") ?? _vault!.UpsertProject(new Project(
+                "", "demo-deploy", "#06B6D4", host == null ? [] : [host.Id], null, false,
+                "/srv/demo", host?.Id, "npm ci && npm run build", "sudo systemctl restart demo",
+                "curl -fsS localhost:3000/health", null, null, 0, false));
+            Reload();
+            SetActiveProject(p.Id, false);
+            Deploy.SetLocalDir(p, gitDir);
+        }
         if (Environment.GetEnvironmentVariable("ZEVN_DEMO_SECTION") is { Length: > 0 } sec && Enum.TryParse<Section>(sec, true, out var s)) Navigate(s);
         var test = Hosts.FirstOrDefault(x => x.Label == "server-tes");
         if (Environment.GetEnvironmentVariable("ZEVN_DEMO_LIGHT") == "1") SetAppearance("light");

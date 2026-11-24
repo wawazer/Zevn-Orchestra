@@ -76,6 +76,7 @@ internal static class GitStatus
         var name = head.Split("...", 2)[0].Trim();
         const string empty = "No commits yet on ";
         if (name.StartsWith(empty, StringComparison.Ordinal)) name = name[empty.Length..];
+        if (name.StartsWith("HEAD (no branch)", StringComparison.Ordinal)) return "HEAD terlepas";
         return name;
     }
 
