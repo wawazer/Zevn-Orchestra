@@ -492,6 +492,7 @@ internal sealed class ShellPage : Grid
             Section.Deploy => new DeployPage(),
             Section.LiveLogs => new LiveLogsPage(),
             Section.Env => new EnvPage(),
+            Section.Monitoring => new MonitoringPage(),
             Section.Hosts => new HostsPage(),
             Section.Keychain => new KeychainPage(),
             Section.Forwarding => new ForwardingPage(),
