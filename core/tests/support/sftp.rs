@@ -5,7 +5,7 @@
 //! buka/baca/tulis file, dan chmod.
 //!
 //! Isi file disimpan di folder sementara, sedangkan izin file dicatat di memori
-//! (`Modes`) karena Windows tidak mengenal mode Unix. Dengan begitu tes tetap bisa
+//! (`FsState`) karena Windows tidak mengenal mode Unix. Dengan begitu tes tetap bisa
 //! memastikan klien mengirim chmod dan mempertahankan izin file lama.
 
 use std::collections::HashMap;
@@ -30,17 +30,56 @@ const DEFAULT_MODE: u32 = 0o644;
 const MODE_DIR: u32 = 0o40000;
 const MODE_REG: u32 = 0o100000;
 
-/// Catatan izin file di server tes (path remote → mode).
+/// Keadaan yang dicatat server tes: izin file (path remote → mode), riwayat rename
+/// dan penghapusan, serta path yang penulisannya sengaja digagalkan — supaya tes
+/// bisa membuktikan penulisan memakai file sementara + rename dan membersihkannya
+/// saat gagal.
 #[derive(Clone, Default)]
-pub struct Modes(Arc<Mutex<HashMap<String, u32>>>);
+pub struct FsState {
+    modes: Arc<Mutex<HashMap<String, u32>>>,
+    renames: Arc<Mutex<Vec<(String, String)>>>,
+    removes: Arc<Mutex<Vec<String>>>,
+    fail_write: Arc<Mutex<Vec<String>>>,
+}
 
-impl Modes {
+impl FsState {
     pub fn set(&self, path: &str, mode: u32) {
-        self.0.lock().unwrap().insert(path.to_string(), mode);
+        self.modes.lock().unwrap().insert(path.to_string(), mode);
     }
 
     pub fn get(&self, path: &str) -> Option<u32> {
-        self.0.lock().unwrap().get(path).copied()
+        self.modes.lock().unwrap().get(path).copied()
+    }
+
+    /// Semua rename yang diminta klien, berurutan: (dari, ke).
+    pub fn renames(&self) -> Vec<(String, String)> {
+        self.renames.lock().unwrap().clone()
+    }
+
+    fn renamed(&self, from: &str, to: &str) {
+        self.renames
+            .lock()
+            .unwrap()
+            .push((from.to_string(), to.to_string()));
+    }
+
+    /// Semua file yang dihapus klien, berurutan.
+    pub fn removes(&self) -> Vec<String> {
+        self.removes.lock().unwrap().clone()
+    }
+
+    fn removed(&self, path: &str) {
+        self.modes.lock().unwrap().remove(path);
+        self.removes.lock().unwrap().push(path.to_string());
+    }
+
+    /// Semua permintaan tulis ke `path` gagal, untuk menguji pembersihan `.tmp`.
+    pub fn fail_write(&self, path: &str) {
+        self.fail_write.lock().unwrap().push(path.to_string());
+    }
+
+    fn write_fails(&self, path: &str) -> bool {
+        self.fail_write.lock().unwrap().iter().any(|p| p == path)
     }
 
     fn of(&self, path: &str) -> u32 {
@@ -53,7 +92,7 @@ pub struct Serving {
     pub port: u16,
 }
 
-pub async fn serve(root: PathBuf, modes: Modes) -> Serving {
+pub async fn serve(root: PathBuf, modes: FsState) -> Serving {
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let config = Arc::new(russh::server::Config {
@@ -78,7 +117,7 @@ pub async fn serve(root: PathBuf, modes: Modes) -> Serving {
 
 struct Ssh {
     root: PathBuf,
-    modes: Modes,
+    modes: FsState,
     channels: HashMap<ChannelId, Channel<Msg>>,
 }
 
@@ -140,7 +179,7 @@ impl russh::server::Handler for Ssh {
 
 struct Fs {
     root: PathBuf,
-    modes: Modes,
+    modes: FsState,
     /// handle → (path lokal, path remote, file terbuka)
     open: HashMap<String, (PathBuf, String, tokio::fs::File)>,
     next: u64,
@@ -243,6 +282,13 @@ impl russh_sftp::server::Handler for Fs {
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
+        let Some((_, remote, _)) = self.open.get(&handle) else {
+            return Err(StatusCode::Failure);
+        };
+        let remote = remote.clone();
+        if self.modes.write_fails(&remote) {
+            return Err(StatusCode::Failure);
+        }
         let Some((_, _, file)) = self.open.get_mut(&handle) else {
             return Err(StatusCode::Failure);
         };
@@ -270,6 +316,28 @@ impl russh_sftp::server::Handler for Fs {
         };
         let remote = remote.clone();
         Ok(Attrs { id, attrs: self.attrs_of(&remote)? })
+    }
+
+    async fn rename(
+        &mut self,
+        id: u32,
+        oldpath: String,
+        newpath: String,
+    ) -> Result<Status, Self::Error> {
+        std::fs::rename(self.local(&oldpath), self.local(&newpath))
+            .map_err(|_| StatusCode::Failure)?;
+        // Izin yang dicatat menempel pada file, jadi ikut pindah ke path baru.
+        if let Some(mode) = self.modes.get(&oldpath) {
+            self.modes.set(&newpath, mode);
+        }
+        self.modes.renamed(&oldpath, &newpath);
+        Ok(ok(id))
+    }
+
+    async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
+        std::fs::remove_file(self.local(&filename)).map_err(|_| StatusCode::Failure)?;
+        self.modes.removed(&filename);
+        Ok(ok(id))
     }
 
     async fn setstat(

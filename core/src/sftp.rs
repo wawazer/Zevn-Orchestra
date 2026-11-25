@@ -198,9 +198,21 @@ impl SftpClient {
             )
             .await
             .map_err(err)?;
-        file.write_all(content.as_bytes()).await.map_err(err)?;
-        file.flush().await.map_err(err)?;
-        file.shutdown().await.map_err(err)?;
+        let written = async {
+            file.write_all(content.as_bytes()).await?;
+            file.flush().await?;
+            file.shutdown().await?;
+            Ok::<(), std::io::Error>(())
+        }
+        .await;
+        if let Err(e) = written {
+            // Jangan tinggalkan `<path>.tmp` di server bila penulisan gagal sebelum rename:
+            // tutup handle dulu (Windows menolak menghapus file yang masih terbuka), lalu hapus.
+            let _ = file.shutdown().await;
+            drop(file);
+            let _ = self.sftp.remove_file(tmp.clone()).await;
+            return Err(err(e));
+        }
 
         // Penggantian nama tidak mengubah mode, jadi izin lama dipasang di file sementara.
         if let Some(mode) = old_mode {
