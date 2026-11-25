@@ -150,7 +150,8 @@ impl SftpClient {
     }
 
     /// Tulis file teks. Bila `backup` dan file sudah ada, isi lama disalin dulu ke `<path>.bak`.
-    /// Mengembalikan path backup (None bila belum ada file lama).
+    /// Isi baru ditulis ke `<path>.tmp` lalu diganti nama, jadi file tujuan tidak pernah
+    /// setengah tertulis. Mengembalikan path backup (None bila belum ada file lama).
     pub async fn write_text(&self, path: String, content: String, backup: bool) -> Result<Option<String>, CoreError> {
         let old = match self.sftp.metadata(path.clone()).await {
             Ok(m) if m.is_dir() => {
@@ -159,6 +160,10 @@ impl SftpClient {
             Ok(m) => Some(m),
             Err(_) => None,
         };
+
+        // Izin file lama dipakai lagi setelah isi baru ditulis.
+        let had_old = old.is_some();
+        let old_mode = old.as_ref().and_then(|m| m.permissions);
 
         let mut backup_path = None;
         if backup {
@@ -182,14 +187,41 @@ impl SftpClient {
             }
         }
 
+        // Tulis ke file sementara lalu ganti nama: file tujuan tidak pernah setengah
+        // tertulis walau koneksi putus di tengah penulisan.
+        let tmp = format!("{path}.tmp");
         let mut file = self
             .sftp
-            .open_with_flags(path, OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE)
+            .open_with_flags(
+                tmp.clone(),
+                OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE,
+            )
             .await
             .map_err(err)?;
         file.write_all(content.as_bytes()).await.map_err(err)?;
         file.flush().await.map_err(err)?;
         file.shutdown().await.map_err(err)?;
+
+        // Penggantian nama tidak mengubah mode, jadi izin lama dipasang di file sementara.
+        if let Some(mode) = old_mode {
+            let _ = self.chmod(tmp.clone(), mode & 0o7777).await;
+        }
+
+        if let Err(e) = self.sftp.rename(tmp.clone(), path.clone()).await {
+            let _ = self.sftp.remove_file(tmp.clone()).await;
+            if !had_old {
+                return Err(err(e));
+            }
+            // Server yang menolak menimpa lewat rename: tulis langsung seperti sebelumnya.
+            let mut file = self
+                .sftp
+                .open_with_flags(path, OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE)
+                .await
+                .map_err(err)?;
+            file.write_all(content.as_bytes()).await.map_err(err)?;
+            file.flush().await.map_err(err)?;
+            file.shutdown().await.map_err(err)?;
+        }
         Ok(backup_path)
     }
 

@@ -255,6 +255,9 @@ detik yang sama, nama diberi akhiran `-2`, `-3`, dst.
 - `SftpClient.read_text` membaca file teks (maks 1 MB, `None` bila belum ada) dan
   `write_text` menulis ulang isinya. Bila `backup` aktif dan file sudah ada, isi lama
   disalin dulu ke `<path>.bak` dengan izin file yang sama, baru file utama ditimpa.
+  Isi baru ditulis ke `<path>.tmp`, diberi izin file lama, lalu diganti nama — jadi
+  file tujuan tidak pernah setengah tertulis walau koneksi putus. Bila server menolak
+  menimpa lewat rename, klien kembali menulis langsung (jalur lama).
 - `Core/EnvModel.cs` mem-parse baris (`#komentar`, baris kosong, `export KEY=value`) dan
   menyusun ulang isi file saat menyimpan; urutan baris dipertahankan.
 - Nilai dengan nama kunci sensitif (SECRET, TOKEN, PASSWORD, API_KEY, PRIVATE, dsb.)
