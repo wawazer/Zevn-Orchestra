@@ -358,7 +358,10 @@ Field baru otomatis ikut sync karena seluruh `VaultData` diserialisasi.
   dan sesi dihentikan saat project berganti atau vault dikunci. Alur SSH-nya diuji otomatis
   terhadap server russh di loopback (`core/tests/logs_local.rs`: baris terpotong, stderr,
   exit status, `stop`, dan koneksi dipakai ulang), tetapi belum diuji ke sshd/OpenSSH nyata.
-  Belum ada penanda warna per tingkat log, pencarian di dalam log, atau ekspor.
+  Halaman ini menampilkan warna ANSI dari keluaran server (kode escape lain dibuang,
+  16 warna pertama mengikuti palet tema terminal), pencarian menyaring baris tanpa
+  membuang buffer (cocok tidak peka huruf besar/kecil, ditandai dengan aksen), dan
+  tombol Ekspor menyimpan seluruh buffer ke berkas `.log`/`.txt` tanpa kode warna.
 - **Tunnel per project** baru sebatas auto-start; belum ada preset atau status detail
   (port, lokal/remote, proses mati karena apa).
 - **Deploy** belum menyimpan riwayat lokal, belum mendukung rsync/delta, dan belum

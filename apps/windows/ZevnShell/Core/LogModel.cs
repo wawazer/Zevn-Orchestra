@@ -54,6 +54,9 @@ internal sealed class LogModel
     /// <summary>Seluruh isi buffer (baris dipisah newline).</summary>
     public string Text { get { lock (_gate) return _text; } }
 
+    /// <summary>Salinan baris buffer — untuk mewarnai, mencari, dan mengekspor di UI.</summary>
+    public string[] Lines { get { lock (_gate) return [.. _lines]; } }
+
     public async Task StartAsync(SshTarget target, string command)
     {
         if (Busy) return;

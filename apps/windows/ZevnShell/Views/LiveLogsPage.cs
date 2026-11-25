@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using uniffi.zevn_core;
 
@@ -11,21 +15,29 @@ namespace ZevnShell.Views;
 
 /// <summary>
 /// Panel log per project: jalankan perintah yang mengikuti log service di server
-/// (journalctl, docker logs, tail -F) dan tampilkan keluarannya langsung.
+/// (journalctl, docker logs, tail -F) dan tampilkan keluarannya langsung. Kode warna
+/// ANSI dari server ikut ditampilkan, pencarian menyaring baris yang tampil, dan isi
+/// buffer bisa diekspor ke berkas.
 /// </summary>
 internal sealed class LiveLogsPage : PageBase
 {
     private readonly LogModel L = App.Model.LiveLogs;
     private readonly ComboBox _host = new() { HorizontalAlignment = HorizontalAlignment.Stretch, Header = "Host" };
     private readonly TextBox _command = Ui.Field("journalctl -u toko -f -n 200 --no-pager", mono: true);
+    private readonly TextBox _search = Ui.Field("Cari di log…", width: 220);
     private readonly TextBlock _log;
     private readonly ScrollViewer _logScroll;
     private readonly Border _statusHost = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly Border _matchHost = new() { VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
     private readonly ToggleSwitch _follow = new() { IsOn = true, OnContent = "", OffContent = "", MinWidth = 0 };
     private readonly Button _start;
     private readonly Button _stop;
     private readonly StackPanel _body;
     private readonly UIElement _empty;
+    private string _filter = "";
+    private string? _shownText;
+    private string _shownFilter = "\0";
+    private string _matchText = "";
     private string? _shownProjectId;
     private bool _hooked;
 
@@ -35,6 +47,17 @@ internal sealed class LiveLogsPage : PageBase
         _start = Ui.Primary("Mulai", G.Play, () => _ = Start());
         _stop = Ui.Secondary("Hentikan", G.Stop, () => _ = Stop());
         var clear = Ui.Secondary("Bersihkan", G.Delete, () => L.Clear());
+        var export = Ui.Secondary("Ekspor", G.Export, () => _ = Export());
+        ToolTipService.SetToolTip(export, "Simpan seluruh isi buffer ke berkas (tanpa kode warna)");
+
+        _search.HorizontalAlignment = HorizontalAlignment.Right;
+        _search.VerticalAlignment = VerticalAlignment.Center;
+        ToolTipService.SetToolTip(_search, "Menyaring baris yang tampil; tidak peka huruf besar/kecil");
+        _search.TextChanged += (_, _) =>
+        {
+            _filter = _search.Text.Trim();
+            Render();
+        };
 
         _log = new TextBlock
         {
@@ -51,7 +74,7 @@ internal sealed class LiveLogsPage : PageBase
 
         var header = Ui.Header("Live Logs",
             "Ikuti log service di server untuk project aktif — journalctl, docker logs, atau tail -F.",
-            clear, _stop, _start);
+            export, clear, _stop, _start);
 
         var quick = Ui.Row(7,
             Ui.Caps("Cepat"),
@@ -64,8 +87,8 @@ internal sealed class LiveLogsPage : PageBase
             quick,
             Ui.Secondary("Perintah dijalankan di server dengan akun host ini. Host dan perintah disimpan di project, jadi ikut tersinkron ke perangkat lain.", 11.5, true)), 14);
 
-        var logHead = Ui.Columns("Auto,*,Auto,Auto", 10,
-            Ui.Caps("Keluaran"), _statusHost,
+        var logHead = Ui.Columns("Auto,Auto,*,Auto,Auto", 10,
+            Ui.Caps("Keluaran"), _matchHost, _search,
             Ui.Text("Ikuti", 11.5, fg: Theme.Text2), _follow);
         var logCard = Ui.Card(Ui.Col(8, logHead, Ui.Divider(), _logScroll), 12);
 
@@ -105,15 +128,91 @@ internal sealed class LiveLogsPage : PageBase
             _command.Text = p.LogCommand ?? "";
         }
         UpdateStatus();
-        // Placeholder ikut dibandingkan supaya tidak berkedip antara kosong dan teks.
-        var text = L.Text.Length == 0 ? "Menunggu keluaran…" : L.Text;
-        if (_log.Text != text)
+
+        var lines = L.Lines;
+        var text = string.Join('\n', lines);
+        if (text != _shownText || _filter != _shownFilter)
         {
-            _log.Text = text;
-            _log.Foreground = L.Text.Length == 0 ? Theme.Text3 : Theme.Text;
-            if (_follow.IsOn && L.Text.Length > 0)
+            _shownText = text;
+            _shownFilter = _filter;
+            Paint(lines, text);
+            if (_follow.IsOn && text.Length > 0)
                 _logScroll.ChangeView(null, double.MaxValue, null, true);
         }
+    }
+
+    /// <summary>
+    /// Isi panel log: jalur cepat untuk log tanpa warna (satu teks biasa), atau baris
+    /// dipecah per potongan warna ANSI. Pencarian menyaring baris dan menandai yang cocok.
+    /// </summary>
+    private void Paint(string[] lines, string text)
+    {
+        if (_filter.Length == 0 && !lines.Any(l => l.Contains('\u001b')))
+        {
+            _log.Text = lines.Length == 0 ? "Menunggu keluaran…" : text;
+            _log.Foreground = lines.Length == 0 ? Theme.Text3 : Theme.Text;
+            ShowMatches(0, false);
+            return;
+        }
+
+        _log.Inlines.Clear();
+        _log.Foreground = Theme.Text;
+        var q = _filter;
+        var shown = 0;
+        foreach (var raw in lines)
+        {
+            if (q.Length > 0 && raw.IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            if (shown > 0) _log.Inlines.Add(new Run { Text = "\n" });
+            shown++;
+            foreach (var (part, color) in AnsiLog.Segments(raw))
+                AddRuns(part, color, q);
+        }
+        if (shown == 0)
+        {
+            _log.Inlines.Add(new Run
+            {
+                Text = lines.Length == 0 ? "Menunggu keluaran…" : $"Tidak ada baris yang cocok dengan “{q}”",
+                Foreground = Theme.Text3
+            });
+        }
+        ShowMatches(shown, q.Length > 0);
+    }
+
+    /// <summary>Satu potongan teks; bagian yang cocok dengan pencarian diberi aksen.</summary>
+    private void AddRuns(string text, string? color, string q)
+    {
+        if (text.Length == 0) return;
+        var fg = color == null ? null : Theme.Brush(color);
+        if (q.Length == 0)
+        {
+            _log.Inlines.Add(new Run { Text = text, Foreground = fg });
+            return;
+        }
+        var at = 0;
+        while (true)
+        {
+            var hit = text.IndexOf(q, at, StringComparison.OrdinalIgnoreCase);
+            if (hit < 0) break;
+            if (hit > at) _log.Inlines.Add(new Run { Text = text[at..hit], Foreground = fg });
+            _log.Inlines.Add(new Run
+            {
+                Text = text.Substring(hit, q.Length),
+                Foreground = Theme.AccentBrush,
+                FontWeight = FontWeights.SemiBold
+            });
+            at = hit + q.Length;
+        }
+        if (at < text.Length) _log.Inlines.Add(new Run { Text = text[at..], Foreground = fg });
+    }
+
+    private void ShowMatches(int count, bool visible)
+    {
+        _matchHost.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (!visible) return;
+        var label = count == 1 ? "1 baris cocok" : $"{count} baris cocok";
+        if (label == _matchText) return;
+        _matchText = label;
+        _matchHost.Child = Ui.Badge(label, Theme.Accent2);
     }
 
     private void FillHosts(Project p)
@@ -141,6 +240,35 @@ internal sealed class LiveLogsPage : PageBase
         ToolTipService.SetToolTip(_statusHost, L.Error ?? text);
         _start.IsEnabled = !L.Busy && M.ActiveProject != null;
         _stop.IsEnabled = L.Busy;
+    }
+
+    /// <summary>Simpan seluruh buffer ke berkas pilihan pengguna, tanpa kode warna.</summary>
+    private async Task Export()
+    {
+        var lines = L.Lines;
+        if (lines.Length == 0)
+        {
+            M.Flash("Belum ada log untuk diekspor");
+            return;
+        }
+        var name = (M.ActiveProject?.Name ?? "zevn").Trim();
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+        {
+            SuggestedFileName = $"log-{Slug(name)}-{DateTime.Now:yyyyMMdd-HHmm}"
+        };
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, App.Window!.Hwnd);
+        picker.FileTypeChoices.Add("Berkas log", [".log"]);
+        picker.FileTypeChoices.Add("Teks", [".txt"]);
+        var f = await picker.PickSaveFileAsync();
+        if (f == null) return;
+        await File.WriteAllTextAsync(f.Path, AnsiLog.Plain(string.Join('\n', lines)) + "\n");
+        M.Flash($"Log disimpan ke {f.Name}");
+    }
+
+    private static string Slug(string name)
+    {
+        var s = string.Concat(name.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-')).Trim('-');
+        return s.Length == 0 ? "zevn" : s;
     }
 
     private async Task Start()
@@ -185,4 +313,123 @@ internal sealed class LiveLogsPage : PageBase
     }
 
     private void OnLog() => Render();
+}
+
+/// <summary>
+/// Parser kode escape ANSI pada keluaran log: memecah satu baris menjadi potongan
+/// berwarna dan membuang kode kontrol lain (gerak kursor, judul jendela) supaya yang
+/// terlihat hanya teksnya. Palet 16 warna mengikuti tema terminal yang aktif.
+/// </summary>
+internal static class AnsiLog
+{
+    private static readonly string[] Palette = TerminalThemes.Get(null).Ansi;
+
+    /// <summary>Potongan teks beserta warna hex-nya (`null` = warna bawaan log).</summary>
+    public static IEnumerable<(string Text, string? Color)> Segments(string line)
+    {
+        var parts = new List<(string, string?)>();
+        var sb = new StringBuilder();
+        string? color = null;
+        var i = 0;
+
+        void Flush()
+        {
+            if (sb.Length == 0) return;
+            parts.Add((sb.ToString(), color));
+            sb.Clear();
+        }
+
+        while (i < line.Length)
+        {
+            if (line[i] != '\u001b')
+            {
+                sb.Append(line[i]);
+                i++;
+                continue;
+            }
+
+            // ESC [ … huruf: urutan kontrol CSI. Hanya `m` (SGR/warna) yang dipakai.
+            if (i + 1 < line.Length && line[i + 1] == '[')
+            {
+                var j = i + 2;
+                while (j < line.Length && !char.IsLetter(line[j])) j++;
+                if (j >= line.Length) break;
+                if (line[j] == 'm')
+                {
+                    Flush();
+                    color = Sgr(line[(i + 2)..j], color);
+                }
+                i = j + 1;
+                continue;
+            }
+
+            // ESC ] … BEL / ESC \ : judul jendela dan sejenisnya — dibuang.
+            if (i + 1 < line.Length && line[i + 1] == ']')
+            {
+                var j = i + 2;
+                while (j < line.Length && line[j] != '\a' && !(line[j] == '\u001b' && j + 1 < line.Length && line[j + 1] == '\\')) j++;
+                i = j;
+                if (i < line.Length && line[i] == '\a') i++;
+                else if (i + 1 < line.Length) i += 2;
+                else i = line.Length;
+                continue;
+            }
+
+            // Escape lain (dua karakter): dibuang.
+            i += Math.Min(2, line.Length - i);
+        }
+
+        Flush();
+        return parts;
+    }
+
+    /// <summary>Teks tanpa kode escape/warna, untuk ekspor dan pencarian.</summary>
+    public static string Plain(string text) =>
+        string.Join('\n', text.Split('\n').Select(l => string.Concat(Segments(l).Select(s => s.Text))));
+
+    private static string? Sgr(string args, string? current)
+    {
+        var codes = args.Length == 0 ? ["0"] : args.Split(';');
+        for (var k = 0; k < codes.Length; k++)
+        {
+            if (!int.TryParse(codes[k], out var n)) continue;
+            switch (n)
+            {
+                case 0 or 39:
+                    current = null;
+                    break;
+                case >= 30 and <= 37:
+                    current = Palette[n - 30];
+                    break;
+                case >= 90 and <= 97:
+                    current = Palette[n - 90 + 8];
+                    break;
+                case 38 when k + 2 < codes.Length && codes[k + 1] == "5" && int.TryParse(codes[k + 2], out var idx):
+                    current = Cube(idx);
+                    k += 2;
+                    break;
+                case 38 when k + 4 < codes.Length && codes[k + 1] == "2"
+                    && byte.TryParse(codes[k + 2], out var r) && byte.TryParse(codes[k + 3], out var g) && byte.TryParse(codes[k + 4], out var b):
+                    current = $"#{r:X2}{g:X2}{b:X2}";
+                    k += 4;
+                    break;
+            }
+        }
+        return current;
+    }
+
+    /// <summary>Warna ANSI 256: 0–15 palet, 16–231 kubus 6×6×6, 232–255 abu-abu.</summary>
+    private static string Cube(int n)
+    {
+        n = Math.Clamp(n, 0, 255);
+        if (n < 16) return Palette[n];
+        if (n >= 232)
+        {
+            var v = 8 + (n - 232) * 10;
+            return $"#{v:X2}{v:X2}{v:X2}";
+        }
+        n -= 16;
+        static int Level(int v) => v == 0 ? 0 : 55 + v * 40;
+        return $"#{Level(n / 36):X2}{Level(n / 6 % 6):X2}{Level(n % 6):X2}";
+    }
 }
