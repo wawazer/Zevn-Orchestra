@@ -266,6 +266,17 @@ internal sealed class AppModel
         }
         if (Environment.GetEnvironmentVariable("ZEVN_DEMO_SECTION") is { Length: > 0 } sec && Enum.TryParse<Section>(sec, true, out var s)) Navigate(s);
         var test = Hosts.FirstOrDefault(x => x.Label == "server-tes");
+        // ZEVN_DEMO_ENV=/srv/toko/.env : project contoh berisi server-tes, untuk tes halaman Env
+        if (Environment.GetEnvironmentVariable("ZEVN_DEMO_ENV") is { Length: > 0 } envPath && test != null)
+        {
+            var p = Projects.FirstOrDefault(x => x.Name == "demo-env") ?? _vault!.UpsertProject(new Project(
+                "", "demo-env", "#EAB308", [test.Id], null, false,
+                "/srv/toko", test.Id, "", "", "", null, null, 0, false));
+            Reload();
+            SetActiveProject(p.Id, false);
+            Settings.Set(EnvModel.PathKey(p.Id), envPath);
+            Navigate(Section.Env);
+        }
         if (Environment.GetEnvironmentVariable("ZEVN_DEMO_LIGHT") == "1") SetAppearance("light");
         if (Environment.GetEnvironmentVariable("ZEVN_DEMO_EDIT") is "1" or "test") Edit(Environment.GetEnvironmentVariable("ZEVN_DEMO_EDIT") == "test" ? test : Hosts.FirstOrDefault());
         if (Environment.GetEnvironmentVariable("ZEVN_DEMO_SFTP") == "1" && test != null) _ = OpenSftp(test);
